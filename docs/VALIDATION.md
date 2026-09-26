@@ -13,3 +13,5 @@
 作業フォルダとSDKの日本語パスで初回の `flutter analyze` と `flutter test` はFlutter側のパス処理により失敗した。英数字のみの一時ジャンクションから同一ソースとSDKを参照して再実行し、解析とテストは成功した。ジャンクションはリポジトリ外の一時領域にあり、ソースを複製していない。Android/iOSのOSビルドや実機操作の成功は確認していない。
 
 後続でAndroid SDKのある環境でdebug buildと実機起動を確認する。iOSはmacOSとXcodeのある環境でbuild、シミュレータ／実機の確認を行う。Phase 1の登録・分類・保存・通知は未実装。
+
+環境要件の参照元: [Flutter Androidセットアップ](https://docs.flutter.dev/platform-integration/android/setup)、[Flutter iOSセットアップ](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-27確認）。

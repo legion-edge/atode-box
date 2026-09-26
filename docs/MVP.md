@@ -12,6 +12,8 @@ GitHub Issueを少なくとも次に分割する: (1)初期構成、(2)ホーム
 
 計画Issue: [Phase 1 #1〜#9](https://github.com/legion-edge/atode-box/issues?q=is%3Aissue+%22Phase+1%22)、[Phase 2 #10〜#15](https://github.com/legion-edge/atode-box/issues?q=is%3Aissue+%22Phase+2%22)、[Phase 3 #16〜#21](https://github.com/legion-edge/atode-box/issues?q=is%3Aissue+%22Phase+3%22)。
 
+Issue #1のレビュー・main反映後は、保存の土台となるIssue #3に着手する。ホーム入力Issue #2はIssue #3の保存ユースケースへ接続する。
+
 完了条件は、登録 → 分類 → 生活時間に合わせた通知 → 開く／完了／あとで → 通知一覧で確認、がiOS / Androidで成立すること。通知は1件ずつ、カテゴリ別文面、3アクションとする。「あとで」は日時選択なしの1タップ。URLを開いても自動完了しない。完成後にDiscordから移行して1〜2週間使い、操作数や再通知の適切さを確認する。
 
 初期設定は帰宅開始18:00、帰宅後19:00、土日と日本の祝日を休日とし、初回起動時に「このまま使う」「設定を変更する」を提示する。祝日判定と通知時刻の細部は各IssueのAcceptance Criteriaで決定する。
