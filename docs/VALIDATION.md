@@ -1,6 +1,6 @@
 # 初期構成の検証記録
 
-確認日: 2026-09-27。対象: Phase 1 Issue #1、Flutter 3.47.5 / Dart 3.13.4、Windows 11。
+確認日: 2026-09-27〜28。対象: Phase 1 Issue #1、Flutter 3.47.5 / Dart 3.13.4、Windows 11 / macOS 26.6.2。
 
 | 対象 | コマンド | 結果 |
 | --- | --- | --- |
@@ -11,8 +11,9 @@
 | Androidエミュレーター | `adb -e install -r`, `adb -e shell am start`, `am force-stop`後の再起動 | Android 16 / API 36のPixel 8エミュレーターで成功。日本語の準備中画面を視認 |
 | iOS Simulator build | `flutter build ios --simulator` | 2026-09-28にMacで成功。`build/ios/iphonesimulator/Runner.app`を生成 |
 | iOS device build | `flutter build ios --debug --no-codesign` | 2026-09-28にMacで成功。生成物は署名なし |
-| iOS device signing | `xcodebuild`で接続中のiPhoneを指定し自動署名を試行 | 失敗。Xcodeが開発チームのアカウントと、このアプリID用のProvisioning Profileを見つけられなかった |
+| iOS device signing（SSH） | `xcodebuild`で接続中のiPhoneを指定し自動署名を試行 | 正しいPersonal Teamを指定するとProvisioning Profileの処理は進んだが、署名鍵へのアクセスで`errSecInternalComponent`により失敗 |
 | iOS Simulator | `simctl install`、`simctl launch`、`simctl terminate`後の再起動 | iPhone 17 / iOS 27.0で成功。日本語の準備中画面をスクリーンショットで視認 |
+| iOS実機 | XcodeのRunnerスキームからiPhone 16 Proを指定して実行 | 署名、インストール、起動に成功。`devicectl`でインストールを確認し、利用者のスクリーンショットで日本語の準備中画面を視認 |
 
 作業フォルダとSDKの日本語パスで初回の `flutter analyze` と `flutter test` はFlutter側のパス処理により失敗した。英数字のみの一時ジャンクションから同一ソースとSDKを参照して再実行し、解析とテストは成功した。
 
@@ -22,6 +23,8 @@ Android Studio導入後、`flutter doctor -v` はAndroid SDKと全ライセン�
 
 2026-09-28にApple M1 / macOS 26.6.2 / Xcode 27.0のMacでFlutter 3.47.5を使用し、`flutter analyze`（問題なし）、`flutter test`（1件通過）、iOSシミュレーター向けビルド、実機向け署名なしビルドを確認した。iPhone 17 / iOS 27.0シミュレーターでアプリを起動し、「あとでボックス」「今じゃない。でも忘れたくない。」「入力機能は準備中です」の表示を確認した。終了後の再起動にも成功。Mac上の`flutter doctor -v`ではXcodeと端末を検出したが、CocoaPodsは未導入。現時点のプロジェクトにはネイティブiOSプラグインがなく、上記ビルドは成功した。
 
-後続でAndroid実機とiPhone実機での起動を確認する。iPhone実機向けの署名は試行したが失敗し、インストール・起動は未実施。Phase 1の登録・分類・保存・通知は未実装。
+SSHからの署名付きビルドでは、初回に別の証明書のチームを誤って指定したためアカウントとProfileを見つけられなかった。SimpleAlarmPoCで使用したPersonal Teamに訂正すると、署名鍵へのアクセスで`errSecInternalComponent`が発生した。Mac上のローカルコピーだけにTeam設定を入れ、Xcode本体からRunnerをiPhone 16 Pro / iOS 26.7へ実行すると、署名・インストール・起動に成功した。`devicectl`でも`dev.legionedge.atodeBox`のインストールを確認した。Team設定と署名情報はリポジトリにコミットしていない。
+
+後続でAndroid実機での起動を確認する。iPhone実機では起動と初期画面のみ確認済みで、アプリ終了後の再起動や後続機能の動作は未検証。Phase 1の登録・分類・保存・通知は未実装。
 
 環境要件の参照元: [Flutter Androidセットアップ](https://docs.flutter.dev/platform-integration/android/setup)、[Flutter iOSセットアップ](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-28再確認）。
