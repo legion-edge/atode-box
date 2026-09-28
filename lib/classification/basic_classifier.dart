@@ -2,7 +2,7 @@ import '../storage/inbox_item.dart';
 
 enum ClassificationReason { urlHost, phrase, ambiguous, noSignal }
 
-/// [evidence] is the exact host or phrase that matched a local rule.
+/// [evidence] is the input's host or phrase that matched a local rule.
 class ClassificationResult {
   const ClassificationResult(this.category, this.reason, {this.evidence});
 
@@ -42,7 +42,7 @@ class BasicClassifier {
             matches[entry.key] = ClassificationResult(
               entry.key,
               ClassificationReason.urlHost,
-              evidence: knownHost,
+              evidence: host,
             );
           }
         }

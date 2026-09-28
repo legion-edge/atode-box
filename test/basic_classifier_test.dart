@@ -30,7 +30,7 @@ void main() {
     final video = classifier.classify('https://m.youtube.com/watch?v=abc');
     expect(video.category, ItemCategory.watch);
     expect(video.reason, ClassificationReason.urlHost);
-    expect(video.evidence, 'youtube.com');
+    expect(video.evidence, 'm.youtube.com');
     expect(
       classifier.classify('https://youtu.be/abc').category,
       ItemCategory.watch,
