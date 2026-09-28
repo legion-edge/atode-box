@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'classification/basic_classifier.dart';
+import 'classification/category_presentation.dart';
 import 'storage/inbox_item.dart';
 import 'storage/local_repository.dart';
 
@@ -54,12 +56,36 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
     (_) => _random.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
   ).join();
 
-  void _message(String message) {
+  void _message(String message, {ItemCategory? category}) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+        content: category == null
+            ? Text(
+                message,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              )
+            : Row(
+                children: [
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    ' · ',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  CategoryBadge(category),
+                ],
+              ),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 112),
@@ -71,15 +97,21 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
     if (_saving || text.trim().isEmpty) return;
     setState(() => _saving = true);
     try {
+      final category = const BasicClassifier().classify(text).category;
       final repository =
           widget.repository ??
           await (_repository ??= LocalRepository.openOnDevice());
       await repository.saveItem(
-        InboxItem(id: _newId(), originalText: text, savedAt: DateTime.now()),
+        InboxItem(
+          id: _newId(),
+          originalText: text,
+          savedAt: DateTime.now(),
+          category: category,
+        ),
       );
       if (!mounted) return;
       if (fromInput && _input.text == text) _input.clear();
-      _message('登録しました');
+      _message('登録しました', category: category);
       if (fromInput) _inputFocus.requestFocus();
     } catch (_) {
       if (!mounted) return;

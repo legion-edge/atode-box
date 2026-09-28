@@ -183,6 +183,16 @@ void main() {
     expect((await LocalRepository(store).getItem('old'))!.originalText, '昔の原文');
   });
 
+  test('saved category and processing flag survive reopening', () async {
+    final store = FailingStore(null);
+    await LocalRepository(store)
+        .saveItem(item('classified').copyWith(category: ItemCategory.watch));
+    final reopened = await LocalRepository(store).getItem('classified');
+    expect(reopened!.category, ItemCategory.watch);
+    expect(reopened.needsProcessing, isTrue);
+    expect(reopened.originalText, item('classified').originalText);
+  });
+
   test('unknown future schema fails without overwriting data', () async {
     final source = jsonEncode({'schema_version': 2, 'items': []});
     final store = FailingStore(source);
