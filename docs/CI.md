@@ -13,4 +13,4 @@
 
 ローカルでもリポジトリのルートから表のコマンドを実行できる。AndroidビルドにはAndroid SDKとJDK 17、iOSビルドにはmacOSとXcodeが必要。CIはビルドの成立を確認するが、エミュレーター／シミュレーターでの起動、実機テスト、署名付き配布ビルド、ストア公開は実施しない。署名鍵、Personal Team設定、シークレットは使用しない。
 
-設定の参照元: [Flutter actionのバージョン指定とキャッシュ](https://github.com/subosito/flutter-action)、[GitHub Actionsの権限・並列実行設定](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[FlutterのiOSビルド要件](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-28確認）。
+設定の参照元: [Flutter actionのバージョン指定とキャッシュ](https://github.com/subosito/flutter-action)、[checkout](https://github.com/actions/checkout)、[setup-java](https://github.com/actions/setup-java)、[GitHub Actionsの権限・並列実行設定](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)、[FlutterのiOSビルド要件](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-28確認）。
