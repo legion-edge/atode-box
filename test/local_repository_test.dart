@@ -85,6 +85,23 @@ void main() {
     expect(snoozed.copyWith(nextNotifyAt: null).nextNotifyAt, isNull);
   });
 
+  test('dates are stored as UTC instants', () {
+    final local = DateTime(2026, 9, 28, 18);
+    final value = InboxItem(
+      id: 'time',
+      originalText: '原文',
+      savedAt: local,
+      nextNotifyAt: local.add(const Duration(days: 1)),
+    );
+    final json = value.toJson();
+    expect(json['saved_at'], local.toUtc().toIso8601String());
+    expect(
+      json['next_notify_at'],
+      local.add(const Duration(days: 1)).toUtc().toIso8601String(),
+    );
+    expect(InboxItem.fromJson(json).savedAt.isAtSameMomentAs(local), isTrue);
+  });
+
   test('backup is readable after interrupted replacement', () async {
     final directory = await Directory.systemTemp.createTemp(
       'atode_backup_test_',
