@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:atode_box/main.dart';
+import 'package:atode_box/classification/category_presentation.dart';
+import 'package:atode_box/storage/inbox_item.dart';
 import 'package:atode_box/storage/local_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -57,6 +59,7 @@ void main() {
     expect(items.last.originalText, '次のメモ');
     expect(items.last.needsProcessing, isTrue);
     expect(items.last.nextNotifyAt, isNull);
+    expect(items.last.category, ItemCategory.memo);
   });
 
   testWidgets('空欄と空白だけの入力は保存しない', (tester) async {
@@ -118,7 +121,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads, 3);
     expect((await repository.allItems()).single.originalText, clipboardText);
+    expect((await repository.allItems()).single.category, ItemCategory.memo);
     expect(find.text('登録しました'), findsOneWidget);
+  });
+
+  testWidgets('分類結果を文字・アイコン・色で表示し、入力時の選択は不要', (tester) async {
+    final repository = LocalRepository(MemoryDocumentStore());
+    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    expect(find.byType(DropdownButton<ItemCategory>), findsNothing);
+    await tester.enterText(find.byType(TextField), '京都に行きたい');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect((await repository.allItems()).single.category, ItemCategory.go);
+    expect((await repository.allItems()).single.needsProcessing, isTrue);
+    expect(find.text('行く'), findsOneWidget);
+    final icon = tester.widget<Icon>(find.byIcon(ItemCategory.go.icon));
+    expect(icon.color, ItemCategory.go.color);
+    expect(find.byType(CategoryBadge), findsOneWidget);
+  });
+
+  testWidgets('7カテゴリそれぞれに日本語名・アイコン・色がある', (tester) async {
+    const labels = <ItemCategory, String>{
+      ItemCategory.read: '読む',
+      ItemCategory.watch: '見る',
+      ItemCategory.go: '行く',
+      ItemCategory.buy: '買う',
+      ItemCategory.doTask: 'やる',
+      ItemCategory.idea: 'アイデア',
+      ItemCategory.memo: 'メモ',
+    };
+    for (final entry in labels.entries) {
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: CategoryBadge(entry.key))),
+      );
+      expect(find.text(entry.value), findsOneWidget);
+      expect(find.byIcon(entry.key.icon), findsOneWidget);
+      final icon = tester.widget<Icon>(find.byIcon(entry.key.icon));
+      expect(icon.color, entry.key.color);
+    }
   });
 
   testWidgets('保存失敗時は入力を残し、成功表示を出さない', (tester) async {
