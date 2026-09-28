@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'storage/lifestyle_settings.dart';
 import 'storage/local_repository.dart';
+import 'scheduling/schedule_engine.dart';
 
 String formatMinute(int minute) =>
     '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
@@ -58,8 +59,10 @@ class _LifestyleSettingsScreenState extends State<LifestyleSettingsScreen> {
       _error = null;
     });
     try {
-      await widget.repository.saveSettings(
+      await widget.repository.saveSettingsWithSchedules(
         _draft.copyWith(initialSetupComplete: true),
+        const ScheduleEngine(),
+        DateTime.now(),
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (_) {

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../scheduling/schedule_engine.dart';
 import 'inbox_item.dart';
 import 'lifestyle_settings.dart';
 
@@ -164,7 +165,11 @@ class LocalRepository {
     return _items![id];
   });
 
-  Future<void> saveItem(InboxItem item) => _serial(() async {
+  Future<void> saveItem(
+    InboxItem item, {
+    ScheduleEngine? scheduler,
+    DateTime? now,
+  }) => _serial(() async {
     await _load();
     if (item.id.isEmpty || item.originalText.isEmpty) {
       throw ArgumentError('Item ID and original text are required');
@@ -172,8 +177,39 @@ class LocalRepository {
     if (_items!.containsKey(item.id)) {
       throw StateError('Item ID already exists');
     }
-    final next = {..._items!, item.id: item};
+    if (scheduler != null && now == null) {
+      throw ArgumentError('An injected time is required for scheduling');
+    }
+    final scheduled = scheduler == null
+        ? item
+        : _withSchedule(item, scheduler.initial(item, _settings!, now!));
+    final next = {..._items!, item.id: scheduled};
     await _commit(next, _settings!);
+  });
+
+  InboxItem _withSchedule(InboxItem item, Schedule schedule) => item.copyWith(
+    nextNotifyAt: schedule.at,
+    context: schedule.context.storageKey,
+    scheduleReason: schedule.reason,
+  );
+
+  /// One durable operation updates the count and next UTC instant together.
+  Future<InboxItem> snoozeItem(
+    String id,
+    ScheduleEngine scheduler,
+    DateTime now,
+  ) => _serial(() async {
+    await _load();
+    final item = _items![id];
+    if (item == null) throw StateError('Item does not exist');
+    final schedule = scheduler.snooze(item, _settings!, now);
+    final updated = item.snoozed(
+      schedule.at,
+      notificationContext: schedule.context.storageKey,
+      reason: schedule.reason,
+    );
+    await _commit({..._items!, id: updated}, _settings!);
+    return updated;
   });
 
   Future<void> updateItem(InboxItem item) => _serial(() async {
@@ -208,4 +244,27 @@ class LocalRepository {
         await _commit(_items!, settings);
         return SettingsChange(previous, settings);
       });
+
+  /// Saves settings and recalculates every active item in the same document.
+  /// A setup-complete-only edit leaves all item schedules untouched.
+  Future<SettingsChange> saveSettingsWithSchedules(
+    LifestyleSettings settings,
+    ScheduleEngine scheduler,
+    DateTime now,
+  ) => _serial(() async {
+    await _load();
+    final change = SettingsChange(_settings!, settings);
+    if (!change.scheduleChanged) {
+      await _commit(_items!, settings);
+      return change;
+    }
+    final updated = <String, InboxItem>{};
+    for (final item in _items!.values) {
+      updated[item.id] = item.status == ItemStatus.active
+          ? _withSchedule(item, scheduler.recalculate(item, settings, now))
+          : item;
+    }
+    await _commit(updated, settings);
+    return change;
+  });
 }
