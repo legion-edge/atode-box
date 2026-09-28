@@ -102,6 +102,24 @@ void main() {
     expect(InboxItem.fromJson(json).savedAt.isAtSameMomentAs(local), isTrue);
   });
 
+  test('update accepts the same saved instant after reopening', () async {
+    final directory = await Directory.systemTemp.createTemp('atode_time_test_');
+    try {
+      final localTime = DateTime(2026, 9, 28, 18);
+      final original = InboxItem(
+        id: 'time',
+        originalText: '原文',
+        savedAt: localTime,
+      );
+      await LocalRepository(FileDocumentStore(directory)).saveItem(original);
+      final reopened = LocalRepository(FileDocumentStore(directory));
+      await reopened.updateItem(original.completed());
+      expect((await reopened.getItem('time'))!.status, ItemStatus.completed);
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('backup is readable after interrupted replacement', () async {
     final directory = await Directory.systemTemp.createTemp(
       'atode_backup_test_',

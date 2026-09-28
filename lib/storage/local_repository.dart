@@ -170,7 +170,7 @@ class LocalRepository {
     final previous = _items![item.id];
     if (previous == null) throw StateError('Item does not exist');
     if (previous.originalText != item.originalText ||
-        previous.savedAt != item.savedAt) {
+        !previous.savedAt.isAtSameMomentAs(item.savedAt)) {
       throw StateError('Original text and saved time cannot be changed');
     }
     final next = {..._items!, item.id: item};
