@@ -28,5 +28,6 @@ iOSビルドにはmacOSとXcodeが必要です。Windows上でのDart解析・�
 - [ドメイン概念](docs/DOMAIN.md)
 - [開発・検証ルール](AGENTS.md)
 - [初期構成の検証記録](docs/VALIDATION.md)
+- [Flutter CI](docs/CI.md)
 
 GitHub Issueを作業の単位とし、各Issueの範囲、受け入れ条件、検証結果を記録します。
