@@ -161,6 +161,33 @@ void main() {
     expect((await repo.getSettings()).commuteStartMinute, 18 * 60);
   });
 
+  test('settings change is emitted only after a successful save', () async {
+    final store = FailingStore(null);
+    final repo = LocalRepository(store);
+    final setup = await repo.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    expect(setup.scheduleChanged, isFalse);
+    final change = await repo.saveSettings(
+      const LifestyleSettings(
+        commuteStartMinute: 17 * 60,
+        initialSetupComplete: true,
+      ),
+    );
+    expect(change.previous.commuteStartMinute, 18 * 60);
+    expect(change.current.commuteStartMinute, 17 * 60);
+    expect(change.scheduleChanged, isTrue);
+    store.fail = true;
+    await expectLater(
+      repo.saveSettings(const LifestyleSettings(afterHomeMinute: 20 * 60)),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(
+      (await LocalRepository(store).getSettings()).afterHomeMinute,
+      19 * 60,
+    );
+  });
+
   test('unversioned document gains defaults and migrates on write', () async {
     final store = FailingStore(
       jsonEncode({

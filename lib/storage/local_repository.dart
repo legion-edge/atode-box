@@ -6,6 +6,17 @@ import 'package:flutter/services.dart';
 import 'inbox_item.dart';
 import 'lifestyle_settings.dart';
 
+/// Returned only after settings are durably saved. Notification scheduling in
+/// later issues can use [scheduleChanged] to decide whether to recalculate.
+class SettingsChange {
+  const SettingsChange(this.previous, this.current);
+
+  final LifestyleSettings previous;
+  final LifestyleSettings current;
+
+  bool get scheduleChanged => !previous.hasSameScheduleAs(current);
+}
+
 abstract interface class DocumentStore {
   Future<String?> read();
   Future<void> write(String contents);
@@ -190,8 +201,11 @@ class LocalRepository {
     return _settings!;
   });
 
-  Future<void> saveSettings(LifestyleSettings settings) => _serial(() async {
-    await _load();
-    await _commit(_items!, settings);
-  });
+  Future<SettingsChange> saveSettings(LifestyleSettings settings) =>
+      _serial(() async {
+        await _load();
+        final previous = _settings!;
+        await _commit(_items!, settings);
+        return SettingsChange(previous, settings);
+      });
 }

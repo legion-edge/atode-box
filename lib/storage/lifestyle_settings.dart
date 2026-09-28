@@ -14,6 +14,26 @@ class LifestyleSettings {
   final bool japaneseHolidays;
   final bool initialSetupComplete;
 
+  LifestyleSettings copyWith({
+    int? commuteStartMinute,
+    int? afterHomeMinute,
+    bool? weekendsAreHolidays,
+    bool? japaneseHolidays,
+    bool? initialSetupComplete,
+  }) => LifestyleSettings(
+    commuteStartMinute: commuteStartMinute ?? this.commuteStartMinute,
+    afterHomeMinute: afterHomeMinute ?? this.afterHomeMinute,
+    weekendsAreHolidays: weekendsAreHolidays ?? this.weekendsAreHolidays,
+    japaneseHolidays: japaneseHolidays ?? this.japaneseHolidays,
+    initialSetupComplete: initialSetupComplete ?? this.initialSetupComplete,
+  );
+
+  bool hasSameScheduleAs(LifestyleSettings other) =>
+      commuteStartMinute == other.commuteStartMinute &&
+      afterHomeMinute == other.afterHomeMinute &&
+      weekendsAreHolidays == other.weekendsAreHolidays &&
+      japaneseHolidays == other.japaneseHolidays;
+
   Map<String, Object?> toJson() => {
     'commute_start_minute': commuteStartMinute,
     'after_home_minute': afterHomeMinute,

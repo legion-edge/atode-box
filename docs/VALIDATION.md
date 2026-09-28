@@ -28,3 +28,9 @@ SSHからの署名付きビルドでは、初回に別の証明書のチーム�
 後続でAndroid実機での起動を確認する。iPhone実機では起動と初期画面のみ確認済みで、アプリ終了後の再起動や後続機能の動作は未検証。Phase 1の登録・分類・保存・通知は未実装。
 
 環境要件の参照元: [Flutter Androidセットアップ](https://docs.flutter.dev/platform-integration/android/setup)、[Flutter iOSセットアップ](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-28再確認）。
+
+## Issue #5: 生活時間設定と初回案内
+
+2026-09-29にWindowsの英数字パスの一時ジャンクションから `flutter analyze` と `flutter test` を実行し、解析は問題なし、24テストはすべて成功した。Widget testで初回と再起動相当の2回目の案内表示、時刻選択で17:30への変更、休日切替、保存失敗時の再試行を確認した。ローカル保存の再読込と、保存成功後だけ返る設定変更情報もテストした。これらは自動テストの結果であり、端末の画面操作結果ではない。
+
+Android debug APKとiOS simulator buildはPRのGitHub CIで確認する。WindowsローカルのFlutter実行は日本語パスと権限の制約があり、ジャンクションからの解析・テスト結果と区別する。iOS実機での時刻選択は、このIssueでは未検証。端末のOS通知は後続Issueの対象。
