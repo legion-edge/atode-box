@@ -86,6 +86,7 @@ class LocalRepository {
   final DocumentStore store;
   Map<String, InboxItem>? _items;
   LifestyleSettings? _settings;
+  String? _scheduleZone;
   Future<void> _tail = Future.value();
 
   Future<T> _serial<T>(Future<T> Function() action) {
@@ -114,10 +115,36 @@ class LocalRepository {
     // defaults, and the next successful write emits version 1.
     final records = root['items'] as List<dynamic>? ?? [];
     final items = <String, InboxItem>{};
+    final reservedIds = records
+        .map(
+          (record) =>
+              (record as Map<String, dynamic>)['notification_id'] as int?,
+        )
+        .whereType<int>()
+        .toSet();
+    final storedIds = records
+        .map(
+          (record) =>
+              (record as Map<String, dynamic>)['notification_id'] as int?,
+        )
+        .whereType<int>()
+        .toList();
+    if (storedIds.length != reservedIds.length ||
+        storedIds.any((id) => id < 1 || id > 0x7fffffff)) {
+      throw const FormatException('Invalid notification ID');
+    }
+    var nextId = 1;
     for (final record in records) {
-      final item = InboxItem.fromJson(record as Map<String, dynamic>);
+      var item = InboxItem.fromJson(record as Map<String, dynamic>);
       if (items.containsKey(item.id)) {
         throw const FormatException('Duplicate item ID');
+      }
+      if (item.notificationId == null) {
+        while (reservedIds.contains(nextId)) {
+          nextId++;
+        }
+        item = item.copyWith(notificationId: nextId);
+        reservedIds.add(nextId++);
       }
       items[item.id] = item;
     }
@@ -125,6 +152,7 @@ class LocalRepository {
     _settings = LifestyleSettings.fromJson(
       root['settings'] as Map<String, dynamic>? ?? {},
     );
+    _scheduleZone = root['schedule_zone'] as String?;
   }
 
   Future<void> _persist(
@@ -135,6 +163,7 @@ class LocalRepository {
       'schema_version': 1,
       'items': items.values.map((item) => item.toJson()).toList(),
       'settings': settings.toJson(),
+      'schedule_zone': _scheduleZone,
     }),
   );
 
@@ -151,6 +180,7 @@ class LocalRepository {
       // Reload on the next operation instead of keeping a stale snapshot.
       _items = null;
       _settings = null;
+      _scheduleZone = null;
       rethrow;
     }
   }
@@ -180,12 +210,46 @@ class LocalRepository {
     if (scheduler != null && now == null) {
       throw ArgumentError('An injected time is required for scheduling');
     }
+    var nextId = 1;
+    final used = _items!.values.map((value) => value.notificationId).toSet();
+    while (used.contains(nextId)) {
+      nextId++;
+    }
+    final withId = item.copyWith(notificationId: nextId);
     final scheduled = scheduler == null
-        ? item
-        : _withSchedule(item, scheduler.initial(item, _settings!, now!));
+        ? withId
+        : _withSchedule(withId, scheduler.initial(withId, _settings!, now!));
+    if (scheduler != null) _scheduleZone = _zone(now!);
     final next = {..._items!, item.id: scheduled};
     await _commit(next, _settings!);
   });
+
+  static String _zone(DateTime now) =>
+      '${now.toLocal().timeZoneName}/${now.toLocal().timeZoneOffset.inMinutes}';
+
+  /// Recalculate only when the device's local zone identity/offset changes.
+  Future<bool> adjustForTimeZone(ScheduleEngine scheduler, DateTime now) =>
+      _serial(() async {
+        await _load();
+        final current = _zone(now);
+        if (_scheduleZone == current) return false;
+        if (_scheduleZone == null) {
+          _scheduleZone = current;
+          return false;
+        }
+        final updated = <String, InboxItem>{};
+        for (final item in _items!.values) {
+          updated[item.id] = item.status == ItemStatus.active
+              ? _withSchedule(
+                  item,
+                  scheduler.recalculate(item, _settings!, now),
+                )
+              : item;
+        }
+        _scheduleZone = current;
+        await _commit(updated, _settings!);
+        return true;
+      });
 
   InboxItem _withSchedule(InboxItem item, Schedule schedule) => item.copyWith(
     nextNotifyAt: schedule.at,
@@ -208,6 +272,7 @@ class LocalRepository {
       notificationContext: schedule.context.storageKey,
       reason: schedule.reason,
     );
+    _scheduleZone = _zone(now);
     await _commit({..._items!, id: updated}, _settings!);
     return updated;
   });
@@ -258,6 +323,7 @@ class LocalRepository {
       await _commit(_items!, settings);
       return change;
     }
+    _scheduleZone = _zone(now);
     final updated = <String, InboxItem>{};
     for (final item in _items!.values) {
       updated[item.id] = item.status == ItemStatus.active

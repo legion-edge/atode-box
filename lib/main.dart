@@ -2,10 +2,14 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'classification/basic_classifier.dart';
 import 'classification/category_presentation.dart';
 import 'lifestyle_settings_screen.dart';
+import 'notifications/flutter_notification_port.dart';
+import 'notifications/notification_controller.dart';
+import 'notifications/notification_port.dart';
 import 'scheduling/schedule_engine.dart';
 import 'storage/inbox_item.dart';
 import 'storage/lifestyle_settings.dart';
@@ -14,9 +18,10 @@ import 'storage/local_repository.dart';
 void main() => runApp(const AtodeBoxApp());
 
 class AtodeBoxApp extends StatelessWidget {
-  const AtodeBoxApp({super.key, this.repository});
+  const AtodeBoxApp({super.key, this.repository, this.notificationPort});
 
   final LocalRepository? repository;
+  final NotificationPort? notificationPort;
 
   @override
   Widget build(BuildContext context) {
@@ -25,22 +30,28 @@ class AtodeBoxApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF86A9A1)),
         useMaterial3: true,
+        splashFactory: InkRipple.splashFactory,
       ),
-      home: HomeInputScreen(repository: repository),
+      home: HomeInputScreen(
+        repository: repository,
+        notificationPort: notificationPort,
+      ),
     );
   }
 }
 
 class HomeInputScreen extends StatefulWidget {
-  const HomeInputScreen({super.key, this.repository});
+  const HomeInputScreen({super.key, this.repository, this.notificationPort});
 
   final LocalRepository? repository;
+  final NotificationPort? notificationPort;
 
   @override
   State<HomeInputScreen> createState() => _HomeInputScreenState();
 }
 
-class _HomeInputScreenState extends State<HomeInputScreen> {
+class _HomeInputScreenState extends State<HomeInputScreen>
+    with WidgetsBindingObserver {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   final _random = Random.secure();
@@ -48,11 +59,104 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
   LifestyleSettings? _settings;
   String? _loadError;
   bool _saving = false;
+  NotificationController? _notifications;
+  bool? _notificationsAllowed;
+  String? _notificationError;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
+    _initializeNotifications();
+  }
+
+  Future<void> _initializeNotifications() async {
+    try {
+      final repository = await _getRepository();
+      final controller = NotificationController(
+        repository,
+        widget.notificationPort ?? FlutterNotificationPort(),
+        onOpen: _openItem,
+        onError: (message) {
+          if (mounted) _message(message);
+        },
+      );
+      _notifications = controller;
+      await controller.initialize();
+      await _refreshNotificationPermission();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _notificationError = '通知を準備できませんでした。次回起動時に再試行します');
+      }
+    }
+  }
+
+  Future<void> _refreshNotificationPermission() async {
+    final controller = _notifications;
+    if (controller == null) return;
+    final allowed = await controller.permissionGranted();
+    if (mounted) setState(() => _notificationsAllowed = allowed);
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    try {
+      await _notifications?.requestPermission();
+      await _refreshNotificationPermission();
+    } catch (_) {
+      if (mounted) _message('通知の権限を確認できませんでした');
+    }
+  }
+
+  Future<bool> _syncNotifications() async {
+    try {
+      await _notifications?.sync();
+      if (mounted) setState(() => _notificationError = null);
+      return true;
+    } catch (_) {
+      if (mounted) _message('保存済みですが通知を予約できませんでした。次回起動時に再試行します');
+      return false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncNotifications();
+      _refreshNotificationPermission();
+    }
+  }
+
+  void _openItem(InboxItem item) {
+    if (!mounted) return;
+    final match = RegExp(
+      r'https?://[^\s<>]+',
+      caseSensitive: false,
+    ).firstMatch(item.url ?? item.originalText);
+    final uri = match == null ? null : Uri.tryParse(match.group(0)!);
+    if (uri != null) {
+      launchUrl(uri, mode: LaunchMode.externalApplication)
+          .then((opened) {
+            if (!opened && mounted) _message('URLを開けませんでした');
+          })
+          .catchError((Object _) {
+            if (mounted) _message('URLを開けませんでした');
+          });
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('保存した内容'),
+        content: Text(item.originalText),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<LocalRepository> _getRepository() async =>
@@ -110,7 +214,10 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
           ),
         ),
       );
-      if (saved == true) await _loadSettings();
+      if (saved == true) {
+        await _loadSettings();
+        await _syncNotifications();
+      }
     } catch (_) {
       _repository = null;
       if (!mounted) return;
@@ -124,6 +231,7 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -190,7 +298,11 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
       );
       if (!mounted) return;
       if (fromInput && _input.text == text) _input.clear();
-      _message('登録しました', category: category);
+      final notified = await _syncNotifications();
+      _message(
+        notified ? '登録しました' : '登録しました。通知は次回起動時に再試行します',
+        category: category,
+      );
       if (fromInput) _inputFocus.requestFocus();
     } catch (_) {
       if (!mounted) return;
@@ -304,6 +416,14 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
               const SizedBox(height: 12),
               const Text('気になることを、そのまま入れておこう。'),
               const SizedBox(height: 20),
+              if (_notificationsAllowed == false) ...[
+                const Text('通知はオフです。保存はそのまま使えます。'),
+                TextButton(
+                  onPressed: _requestNotificationPermission,
+                  child: const Text('通知を許可する'),
+                ),
+              ],
+              if (_notificationError != null) Text(_notificationError!),
               Expanded(
                 child: TextField(
                   controller: _input,
