@@ -23,6 +23,12 @@
 - APIキー、署名鍵、認証情報、個人データ、生ログ、ローカル設定をコミットしない。`.gitignore` と差分を確認する。
 - UI文言は日本語を基本とし、処理と分離して将来の多言語対応を妨げない。
 
+## iOS検証環境
+
+2026-09-28時点の検証環境は Apple M1 / macOS 26.6.2 / Xcode 27.0 / Flutter 3.47.5。iOSビルド・実行はMacとXcodeで行う。`flutter build ios --simulator` と実機向け `flutter build ios --debug --no-codesign` は成功済み。iPhone 17 / iOS 27.0シミュレーターとiPhone 16 Pro / iOS 26.7実機で初期画面を確認した。
+
+実機の署名・起動はMacローカルのXcodeでRunnerスキームにPersonal Teamを設定して実施した。SSH経由の署名付きCLIビルドはキーチェーンの `errSecInternalComponent` で失敗するため、署名なしビルドの成否と分けて報告する。Team設定や署名情報はコミットしない。CocoaPodsは未導入で、現行プロジェクトにはネイティブiOSプラグインがない。必要になった時点で公式手順に沿って導入する。詳細は [検証記録](docs/VALIDATION.md)。
+
 ## GitHubと完了条件
 
 - Issue、PR本文は原則日本語。本文には背景、変更、対象外、テスト／未実施理由、残課題を実際の改行で記載する。投稿後は読み戻す。
