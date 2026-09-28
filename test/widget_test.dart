@@ -4,6 +4,7 @@ import 'package:atode_box/main.dart';
 import 'package:atode_box/classification/category_presentation.dart';
 import 'package:atode_box/storage/inbox_item.dart';
 import 'package:atode_box/storage/local_repository.dart';
+import 'package:atode_box/storage/lifestyle_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,17 @@ class MemoryDocumentStore implements DocumentStore {
 }
 
 void main() {
+  Future<void> pumpReady(
+    WidgetTester tester,
+    LocalRepository repository,
+  ) async {
+    await repository.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await tester.pumpAndSettle();
+  }
+
   TestWidgetsFlutterBinding.ensureInitialized();
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -31,10 +43,98 @@ void main() {
     messenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
+  testWidgets('初回は既定値を案内し、保存後の2回目は表示しない', (tester) async {
+    final store = MemoryDocumentStore();
+    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpAndSettle();
+    expect(find.text('このまま使う'), findsOneWidget);
+    expect(find.textContaining('18:00'), findsOneWidget);
+    expect(find.textContaining('19:00'), findsOneWidget);
+    expect(find.textContaining('土日・日本の祝日'), findsOneWidget);
+    await tester.tap(find.text('このまま使う'));
+    await tester.pumpAndSettle();
+    expect(find.text('あとで見たいこと'), findsOneWidget);
+    expect(
+      (await LocalRepository(store).getSettings()).initialSetupComplete,
+      isTrue,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpAndSettle();
+    expect(find.text('このまま使う'), findsNothing);
+    expect(find.text('あとで見たいこと'), findsOneWidget);
+  });
+
+  testWidgets('設定画面で時刻と休日を変更して保存できる', (tester) async {
+    final store = MemoryDocumentStore();
+    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('設定を変更する'));
+    await tester.pumpAndSettle();
+    expect(find.text('18:00'), findsOneWidget);
+    expect(find.text('19:00'), findsOneWidget);
+    await tester.tap(find.text('18:00'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.keyboard_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '17');
+    await tester.enterText(find.byType(TextField).last, '30');
+    await tester.tap(find.text('決定'));
+    await tester.pumpAndSettle();
+    expect(find.text('17:30'), findsOneWidget);
+    await tester.tap(find.text('土日を休日にする'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存する'));
+    await tester.pumpAndSettle();
+    final saved = await LocalRepository(store).getSettings();
+    expect(saved.commuteStartMinute, 17 * 60 + 30);
+    expect(saved.weekendsAreHolidays, isFalse);
+    expect(saved.initialSetupComplete, isTrue);
+    expect(find.text('あとで見たいこと'), findsOneWidget);
+  });
+
+  testWidgets('初回設定の保存失敗は案内を完了しない', (tester) async {
+    final store = MemoryDocumentStore()..failWrite = true;
+    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('このまま使う'));
+    await tester.pumpAndSettle();
+    expect(find.text('このまま使う'), findsOneWidget);
+    expect(find.textContaining('保存できませんでした'), findsOneWidget);
+    expect(store.contents, isNull);
+  });
+
+  testWidgets('設定画面の保存失敗は画面に残して再試行できる', (tester) async {
+    final store = MemoryDocumentStore();
+    final repository = LocalRepository(store);
+    await pumpReady(tester, repository);
+    await tester.tap(find.byTooltip('設定'));
+    await tester.pumpAndSettle();
+    store.failWrite = true;
+    await tester.tap(find.text('土日を休日にする'));
+    await tester.tap(find.text('保存する'));
+    await tester.pumpAndSettle();
+    expect(find.text('生活時間の設定'), findsOneWidget);
+    expect(find.textContaining('保存できませんでした'), findsOneWidget);
+    expect(
+      (await LocalRepository(store).getSettings()).weekendsAreHolidays,
+      isTrue,
+    );
+    store.failWrite = false;
+    await tester.tap(find.text('保存する'));
+    await tester.pumpAndSettle();
+    expect(
+      (await LocalRepository(store).getSettings()).weekendsAreHolidays,
+      isFalse,
+    );
+  });
+
   testWidgets('入力を保存し、確認表示の後も連続で登録できる', (tester) async {
     final store = MemoryDocumentStore();
     final repository = LocalRepository(store);
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await pumpReady(tester, repository);
 
     expect(find.text('あとで見たいこと'), findsOneWidget);
     expect(find.text('貼り付けて追加'), findsOneWidget);
@@ -64,7 +164,7 @@ void main() {
 
   testWidgets('空欄と空白だけの入力は保存しない', (tester) async {
     final repository = LocalRepository(MemoryDocumentStore());
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await pumpReady(tester, repository);
     await tester.tap(find.text('登録'));
     await tester.enterText(find.byType(TextField), '  \n ');
     await tester.tap(find.text('登録'));
@@ -83,7 +183,7 @@ void main() {
       tester.view.resetViewInsets();
     });
     final repository = LocalRepository(MemoryDocumentStore());
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await pumpReady(tester, repository);
     await tester.enterText(find.byType(TextField), 'キーボード中の入力');
     await tester.pump();
     expect(tester.getRect(find.text('登録')).bottom, lessThan(480));
@@ -103,7 +203,7 @@ void main() {
       return null;
     });
     final repository = LocalRepository(MemoryDocumentStore());
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await pumpReady(tester, repository);
     expect(reads, 0);
 
     await tester.tap(find.text('貼り付けて追加'));
@@ -127,7 +227,7 @@ void main() {
 
   testWidgets('分類結果を文字・アイコン・色で表示し、入力時の選択は不要', (tester) async {
     final repository = LocalRepository(MemoryDocumentStore());
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await pumpReady(tester, repository);
     expect(find.byType(DropdownButton<ItemCategory>), findsNothing);
     await tester.enterText(find.byType(TextField), '京都に行きたい');
     await tester.tap(find.text('登録'));
@@ -162,8 +262,12 @@ void main() {
   });
 
   testWidgets('保存失敗時は入力を残し、成功表示を出さない', (tester) async {
-    final store = MemoryDocumentStore()..failWrite = true;
+    final store = MemoryDocumentStore();
+    await LocalRepository(store)
+        .saveSettings(const LifestyleSettings(initialSetupComplete: true));
+    store.failWrite = true;
     await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '消さないメモ');
     await tester.tap(find.text('登録'));
     await tester.pumpAndSettle();
@@ -172,6 +276,6 @@ void main() {
       '消さないメモ',
     );
     expect(find.text('登録しました'), findsNothing);
-    expect(store.contents, isNull);
+    expect((await LocalRepository(store).allItems()), isEmpty);
   });
 }

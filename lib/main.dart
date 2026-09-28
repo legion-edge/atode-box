@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 
 import 'classification/basic_classifier.dart';
 import 'classification/category_presentation.dart';
+import 'lifestyle_settings_screen.dart';
 import 'storage/inbox_item.dart';
+import 'storage/lifestyle_settings.dart';
 import 'storage/local_repository.dart';
 
 void main() => runApp(const AtodeBoxApp());
@@ -42,7 +44,82 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
   final _inputFocus = FocusNode();
   final _random = Random.secure();
   Future<LocalRepository>? _repository;
+  LifestyleSettings? _settings;
+  String? _loadError;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<LocalRepository> _getRepository() async =>
+      widget.repository ??
+      await (_repository ??= LocalRepository.openOnDevice());
+
+  Future<void> _loadSettings() async {
+    try {
+      final settings = await (await _getRepository()).getSettings();
+      if (mounted) {
+        setState(() {
+          _settings = settings;
+          _loadError = null;
+        });
+      }
+    } catch (_) {
+      _repository = null;
+      if (mounted) setState(() => _loadError = '設定を読み込めませんでした');
+    }
+  }
+
+  Future<void> _completeInitialSetup() async {
+    if (_saving || _settings == null) return;
+    setState(() {
+      _saving = true;
+      _loadError = null;
+    });
+    try {
+      await (await _getRepository()).saveSettings(
+        _settings!.copyWith(initialSetupComplete: true),
+      );
+      if (mounted) {
+        setState(
+          () => _settings = _settings!.copyWith(initialSetupComplete: true),
+        );
+      }
+    } catch (_) {
+      _repository = null;
+      if (mounted) setState(() => _loadError = '保存できませんでした。もう一度お試しください');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _openSettings() async {
+    if (_settings == null) return;
+    try {
+      final repository = await _getRepository();
+      if (!mounted) return;
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => LifestyleSettingsScreen(
+            repository: repository,
+            initial: _settings!,
+          ),
+        ),
+      );
+      if (saved == true) await _loadSettings();
+    } catch (_) {
+      _repository = null;
+      if (!mounted) return;
+      if (_settings!.initialSetupComplete) {
+        _message('設定を開けませんでした。もう一度お試しください');
+      } else {
+        setState(() => _loadError = '設定を開けませんでした。もう一度お試しください');
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -98,9 +175,7 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
     setState(() => _saving = true);
     try {
       final category = const BasicClassifier().classify(text).category;
-      final repository =
-          widget.repository ??
-          await (_repository ??= LocalRepository.openOnDevice());
+      final repository = await _getRepository();
       await repository.saveItem(
         InboxItem(
           id: _newId(),
@@ -139,6 +214,63 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_settings == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('あとでボックス')),
+        body: Center(
+          child: _loadError == null
+              ? const CircularProgressIndicator()
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_loadError!),
+                    TextButton(
+                      onPressed: _loadSettings,
+                      child: const Text('再試行'),
+                    ),
+                  ],
+                ),
+        ),
+      );
+    }
+    if (!_settings!.initialSetupComplete) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('はじめに')),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('生活時間に合わせて思い出します', style: TextStyle(fontSize: 22)),
+                const SizedBox(height: 24),
+                Text('帰宅開始  ${formatMinute(_settings!.commuteStartMinute)}'),
+                Text('帰宅後  ${formatMinute(_settings!.afterHomeMinute)}'),
+                Text(
+                  '休日  ${_settings!.weekendsAreHolidays ? '土日' : '土日なし'}・${_settings!.japaneseHolidays ? '日本の祝日' : '祝日なし'}',
+                ),
+                const Spacer(),
+                if (_loadError != null)
+                  Text(
+                    _loadError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                FilledButton(
+                  onPressed: _saving ? null : _completeInitialSetup,
+                  child: const Text('このまま使う'),
+                ),
+                OutlinedButton(
+                  onPressed: _saving ? null : _openSettings,
+                  child: const Text('設定を変更する'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('あとでボックス'),
@@ -151,7 +283,7 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '設定',
-            onPressed: () => _message('設定は準備中です'),
+            onPressed: _openSettings,
           ),
         ],
       ),

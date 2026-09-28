@@ -28,3 +28,13 @@ SSHからの署名付きビルドでは、初回に別の証明書のチーム�
 後続でAndroid実機での起動を確認する。iPhone実機では起動と初期画面のみ確認済みで、アプリ終了後の再起動や後続機能の動作は未検証。Phase 1の登録・分類・保存・通知は未実装。
 
 環境要件の参照元: [Flutter Androidセットアップ](https://docs.flutter.dev/platform-integration/android/setup)、[Flutter iOSセットアップ](https://docs.flutter.dev/platform-integration/ios/setup)（2026-09-28再確認）。
+
+## Issue #5: 生活時間設定と初回案内
+
+2026-09-29にWindowsの英数字パスの一時ジャンクションから `flutter analyze` と `flutter test` を実行し、解析は問題なし、24テストはすべて成功した。Widget testで初回と再起動相当の2回目の案内表示、時刻選択で17:30への変更、休日切替、保存失敗時の再試行を確認した。ローカル保存の再読込と、保存成功後だけ返る設定変更情報もテストした。これらは自動テストの結果であり、端末の画面操作結果ではない。
+
+[PR #28のGitHub CI](https://github.com/legion-edge/atode-box/actions/runs/36444049003)では解析、テスト、Android debug APK、iOS simulator buildの4ジョブが成功した。WindowsローカルのFlutter実行は日本語パスと権限の制約があり、ジャンクションからの解析・テスト結果とCIのAndroidビルド結果を区別する。WindowsローカルではAndroid APKビルドとAndroid端末操作を実施していない。
+
+Macの隔離コピー（HEAD `67989bb`）では `flutter build ios --simulator --no-codesign` が成功し、iPhone 17 / iOS 27.0シミュレーターで初回案内の18:00、19:00、土日・日本の祝日と2つの選択肢をスクリーンショットで視認した。隔離コピーにのみ一時的に `integration_test` を追加し、シミュレーター上で「設定を変更する」から時刻を17:30へ変更、土日をオフ、保存、リポジトリ再読込、2回目の表示で案内が出ないこと、設定画面に17:30が残ることを操作テストで確認した（1件成功）。この一時テストと依存変更はPRへコミットしていない。
+
+2026-09-29にiPhone 16 Pro / iOS 26.7実機でPR HEAD `54f14d4` を検証した。Macの隔離コピーにだけ既存のPersonal Team設定を適用し、Xcode GUIで署名付きビルドを成功させた。無料Personal Teamのアプリ数上限により専用Bundle IDでの追加インストールは失敗したため、既存の `dev.legionedge.atodeBox` を上書きしてインストール・起動に成功した。SSHシェルからの署名は既知の `errSecInternalComponent` で失敗したが、MacのGUIセッションのTerminalから実行した一時的な `integration_test` は成功した（1件）。実機上で設定画面から帰宅開始を17:30へ変更し、保存後のローカル再読込、再表示時の初回案内非表示、設定画面での17:30保持を確認した。テストは終了時に元の生活時間設定を復元した。実機の保存ファイルをMacへコピーする操作は自動承認審査で却下されたため実施していない。一時テスト、Personal Team設定、署名情報、実機データはコミットしていない。端末のOS通知は後続Issueの対象。
