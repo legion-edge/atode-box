@@ -20,11 +20,19 @@ class FakePort implements NotificationPort {
   bool failSchedule = false;
   final requests = <int, LocalNotice>{};
   void Function(NoticeResponse)? callback;
+  NoticeResponse? launchNotice;
+  bool deliverCallbackOnLaunch = false;
   @override
   Future<void> initialize(void Function(NoticeResponse) onResponse) async =>
       callback = onResponse;
   @override
-  Future<NoticeResponse?> launchResponse() async => null;
+  Future<NoticeResponse?> launchResponse() async {
+    if (deliverCallbackOnLaunch && launchNotice != null) {
+      callback?.call(launchNotice!);
+    }
+    return launchNotice;
+  }
+
   @override
   Future<bool> permissionGranted() async => allowed;
   @override
@@ -127,6 +135,33 @@ void main() {
       NoticeResponse(FlutterNotificationPort.snooze, oldPayload),
     );
     expect((await repository.getItem('a'))!.snoozeCount, 1);
+  });
+
+  test('起動応答とcallbackの同じ「あとで」は1回だけ反映する', () async {
+    final repository = LocalRepository(MemoryStore());
+    final item = await add(repository, 'a', ItemCategory.idea);
+    final port = FakePort()
+      ..launchNotice = NoticeResponse(
+        FlutterNotificationPort.snooze,
+        noticeFor(item).payload,
+      )
+      ..deliverCallbackOnLaunch = true;
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+    );
+
+    await controller.initialize();
+
+    final updated = (await repository.getItem('a'))!;
+    expect(updated.snoozeCount, 1);
+    expect(updated.nextNotifyAt, isNot(item.nextNotifyAt));
+    expect(
+      port.requests[item.notificationId]!.payload,
+      noticeFor(updated).payload,
+    );
   });
 
   test('OS予約失敗後も保存が残り、次回照合で再試行する', () async {

@@ -422,6 +422,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
                   onPressed: _requestNotificationPermission,
                   child: const Text('通知を許可する'),
                 ),
+                const Text('一度拒否した場合は、端末の設定で「あとでボックス」の通知をオンにしてください。'),
               ],
               if (_notificationError != null) Text(_notificationError!),
               Expanded(

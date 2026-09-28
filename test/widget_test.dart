@@ -25,15 +25,18 @@ class MemoryDocumentStore implements DocumentStore {
 }
 
 class WidgetTestNotificationPort implements NotificationPort {
+  WidgetTestNotificationPort({this.allowed = true});
+
+  bool allowed;
   final requests = <int, LocalNotice>{};
   @override
   Future<void> initialize(void Function(NoticeResponse) onResponse) async {}
   @override
   Future<NoticeResponse?> launchResponse() async => null;
   @override
-  Future<bool> permissionGranted() async => true;
+  Future<bool> permissionGranted() async => allowed;
   @override
-  Future<bool> requestPermission() async => true;
+  Future<bool> requestPermission() async => allowed;
   @override
   Future<List<PendingNotice>> pending() async => requests.values
       .map((notice) => PendingNotice(notice.id, notice.payload))
@@ -45,9 +48,12 @@ class WidgetTestNotificationPort implements NotificationPort {
   Future<void> cancel(int id) async => requests.remove(id);
 }
 
-AtodeBoxApp testApp(LocalRepository repository) => AtodeBoxApp(
+AtodeBoxApp testApp(
+  LocalRepository repository, {
+  NotificationPort? notificationPort,
+}) => AtodeBoxApp(
   repository: repository,
-  notificationPort: WidgetTestNotificationPort(),
+  notificationPort: notificationPort ?? WidgetTestNotificationPort(),
 );
 
 void main() {
@@ -189,6 +195,30 @@ void main() {
     expect(items.last.nextNotifyAt!.isAfter(items.last.savedAt), isTrue);
     expect(items.last.context, 'next_day_evening');
     expect(items.last.category, ItemCategory.memo);
+  });
+
+  testWidgets('通知を拒否しても保存でき、端末設定からの復旧方法が見える', (tester) async {
+    final repository = LocalRepository(MemoryDocumentStore());
+    await repository.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    await tester.pumpWidget(
+      testApp(
+        repository,
+        notificationPort: WidgetTestNotificationPort(allowed: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('通知を許可する'), findsOneWidget);
+    expect(find.textContaining('端末の設定で'), findsOneWidget);
+    await tester.tap(find.text('通知を許可する'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('端末の設定で'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '拒否中のメモ');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect((await repository.allItems()).single.originalText, '拒否中のメモ');
   });
 
   testWidgets('空欄と空白だけの入力は保存しない', (tester) async {

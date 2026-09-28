@@ -22,7 +22,7 @@ class NotificationController {
 
   Future<void> initialize() async {
     await port.initialize((response) {
-      _tail = _tail.then((_) => handle(response)).catchError((Object _) {
+      handle(response).catchError((Object _) {
         onError('通知操作を反映できませんでした。アプリで確認してください');
       });
     });
@@ -37,7 +37,16 @@ class NotificationController {
     await sync();
   }
 
-  Future<void> handle(NoticeResponse response) async {
+  Future<void> handle(NoticeResponse response) {
+    final result = _tail.then((_) => _handle(response));
+    _tail = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {},
+    );
+    return result;
+  }
+
+  Future<void> _handle(NoticeResponse response) async {
     final payload = response.payload;
     if (payload == null) return;
     final divider = payload.indexOf('|');
