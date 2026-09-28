@@ -18,7 +18,7 @@ Issue #1のレビュー・main反映後は、保存の土台となるIssue #3に
 
 初期設定は帰宅開始18:00、帰宅後19:00、土日と日本の祝日を休日とし、初回起動時に「このまま使う」「設定を変更する」を提示する。祝日判定と通知時刻の細部は各IssueのAcceptance Criteriaで決定する。
 
-Issue #5では生活時間と休日の選択を端末内に保存する。設定保存が成功した場合だけ `LocalRepository.saveSettings` が `SettingsChange` を返す。`scheduleChanged` が真なら、後続の通知実装が保存済みの未完了項目の通知予定を再計算する。初回案内の完了フラグだけの変更では再計算しない。通知予定の算出・OS通知の更新は後続Issueで実装する。
+Issue #5では生活時間と休日の選択を端末内に保存する。Issue #6で [通知予定ルール](SCHEDULING.md) と保存済みactive項目の再計算を追加した。設定と予定の保存が成功した場合だけ `SettingsChange` を返し、`scheduleChanged` が真なら再計算する。初回案内の完了フラグだけの変更では再計算しない。OS通知の登録・更新は後続Issueで実装する。
 
 ## Phase 2: 毎日快適に使える
 

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'classification/basic_classifier.dart';
 import 'classification/category_presentation.dart';
 import 'lifestyle_settings_screen.dart';
+import 'scheduling/schedule_engine.dart';
 import 'storage/inbox_item.dart';
 import 'storage/lifestyle_settings.dart';
 import 'storage/local_repository.dart';
@@ -176,13 +177,16 @@ class _HomeInputScreenState extends State<HomeInputScreen> {
     try {
       final category = const BasicClassifier().classify(text).category;
       final repository = await _getRepository();
+      final now = DateTime.now();
       await repository.saveItem(
         InboxItem(
           id: _newId(),
           originalText: text,
-          savedAt: DateTime.now(),
+          savedAt: now,
           category: category,
         ),
+        scheduler: const ScheduleEngine(),
+        now: now,
       );
       if (!mounted) return;
       if (fromInput && _input.text == text) _input.clear();

@@ -158,7 +158,9 @@ void main() {
     expect(items, hasLength(2));
     expect(items.last.originalText, '次のメモ');
     expect(items.last.needsProcessing, isTrue);
-    expect(items.last.nextNotifyAt, isNull);
+    expect(items.last.nextNotifyAt, isNotNull);
+    expect(items.last.nextNotifyAt!.isAfter(items.last.savedAt), isTrue);
+    expect(items.last.context, 'next_day_evening');
     expect(items.last.category, ItemCategory.memo);
   });
 

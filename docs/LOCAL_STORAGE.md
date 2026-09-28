@@ -6,7 +6,7 @@
 
 `schema_version` は現在 1。未指定を 0 として読み込み、欠けている後発フィールドに既定値を補い、次回の正常な書き込みで 1 に更新します。今後は版ごとの移行を追加し、旧版の原文を保持し、未来版を開いた場合は書き込まない方針です。スキーマ 0 は移行検証用の旧形式であり、リリース済みアプリの既存DBはありません。
 
-`original_text` と `saved_at` は更新時に変更できません。状態は `active` / `completed` / `deleted`。削除状態と物理削除は別操作で、「あとで」は `active` の `snooze_count` と `next_notify_at` を更新します。`needs_processing` は分類・通知準備の後続処理用です。通知日時の決定や設定画面はここでは扱いません。
+`original_text` と `saved_at` は更新時に変更できません。状態は `active` / `completed` / `deleted`。削除状態と物理削除は別操作で、「あとで」は `active` の `snooze_count` と `next_notify_at` を単一書き込みで更新します。読む/見るの任意属性 `content_length` は不明なら `unspecified` として読み込みます。`needs_processing` はOS通知準備の後続処理用です。予定時刻の決定は [通知予定ルール](SCHEDULING.md) を参照。
 
 日時はタイムゾーン変更でも同じ瞬間を指すよう UTC の ISO 8601 形式で保存します。表示や通知時刻の再計算では端末の現在のタイムゾーンへ変換してください。
 
