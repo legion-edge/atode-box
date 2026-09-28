@@ -33,4 +33,8 @@ SSHからの署名付きビルドでは、初回に別の証明書のチーム�
 
 2026-09-29にWindowsの英数字パスの一時ジャンクションから `flutter analyze` と `flutter test` を実行し、解析は問題なし、24テストはすべて成功した。Widget testで初回と再起動相当の2回目の案内表示、時刻選択で17:30への変更、休日切替、保存失敗時の再試行を確認した。ローカル保存の再読込と、保存成功後だけ返る設定変更情報もテストした。これらは自動テストの結果であり、端末の画面操作結果ではない。
 
-Android debug APKとiOS simulator buildはPRのGitHub CIで確認する。WindowsローカルのFlutter実行は日本語パスと権限の制約があり、ジャンクションからの解析・テスト結果と区別する。iOS実機での時刻選択は、このIssueでは未検証。端末のOS通知は後続Issueの対象。
+[PR #28のGitHub CI](https://github.com/legion-edge/atode-box/actions/runs/36444049003)では解析、テスト、Android debug APK、iOS simulator buildの4ジョブが成功した。WindowsローカルのFlutter実行は日本語パスと権限の制約があり、ジャンクションからの解析・テスト結果とCIのAndroidビルド結果を区別する。WindowsローカルではAndroid APKビルドとAndroid端末操作を実施していない。
+
+Macの隔離コピー（HEAD `67989bb`）では `flutter build ios --simulator --no-codesign` が成功し、iPhone 17 / iOS 27.0シミュレーターで初回案内の18:00、19:00、土日・日本の祝日と2つの選択肢をスクリーンショットで視認した。隔離コピーにのみ一時的に `integration_test` を追加し、シミュレーター上で「設定を変更する」から時刻を17:30へ変更、土日をオフ、保存、リポジトリ再読込、2回目の表示で案内が出ないこと、設定画面に17:30が残ることを操作テストで確認した（1件成功）。この一時テストと依存変更はPRへコミットしていない。
+
+iPhone実機での時刻選択は未検証。SSHからの署名付きビルドは過去にキーチェーンアクセスで失敗しており、Personal Teamを使用したXcode GUI操作が必要なため、シミュレーター結果と区別する。端末のOS通知は後続Issueの対象。
