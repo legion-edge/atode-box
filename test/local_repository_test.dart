@@ -63,6 +63,12 @@ void main() {
           await LocalRepository(FileDocumentStore(directory)).getItem('1'),
           isNull,
         );
+        expect(
+          await File(
+            '${directory.path}${Platform.pathSeparator}atode_box.json.bak',
+          ).exists(),
+          isFalse,
+        );
       } finally {
         await directory.delete(recursive: true);
       }
@@ -86,11 +92,10 @@ void main() {
     try {
       final store = FileDocumentStore(directory);
       await store.write('previous');
-      await store.write('current');
       final current = File(
         '${directory.path}${Platform.pathSeparator}atode_box.json',
       );
-      await current.delete();
+      await current.rename('${current.path}.bak');
       expect(await store.read(), 'previous');
     } finally {
       await directory.delete(recursive: true);

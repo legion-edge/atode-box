@@ -54,6 +54,7 @@ class FileDocumentStore implements DocumentStore {
         movedCurrent = true;
       }
       await _pending.rename(_current.path);
+      if (await _backup.exists()) await _backup.delete();
     } catch (_) {
       if (movedCurrent && !await _current.exists()) {
         await _backup.rename(_current.path);
@@ -125,6 +126,23 @@ class LocalRepository {
     }),
   );
 
+  Future<void> _commit(
+    Map<String, InboxItem> items,
+    LifestyleSettings settings,
+  ) async {
+    try {
+      await _persist(items, settings);
+      _items = items;
+      _settings = settings;
+    } catch (_) {
+      // A filesystem error after rename may still have installed the new file.
+      // Reload on the next operation instead of keeping a stale snapshot.
+      _items = null;
+      _settings = null;
+      rethrow;
+    }
+  }
+
   Future<List<InboxItem>> allItems() => _serial(() async {
     await _load();
     return List.unmodifiable(_items!.values);
@@ -144,8 +162,7 @@ class LocalRepository {
       throw StateError('Item ID already exists');
     }
     final next = {..._items!, item.id: item};
-    await _persist(next, _settings!);
-    _items = next;
+    await _commit(next, _settings!);
   });
 
   Future<void> updateItem(InboxItem item) => _serial(() async {
@@ -157,8 +174,7 @@ class LocalRepository {
       throw StateError('Original text and saved time cannot be changed');
     }
     final next = {..._items!, item.id: item};
-    await _persist(next, _settings!);
-    _items = next;
+    await _commit(next, _settings!);
   });
 
   /// Physical removal is separate from the domain's soft-deleted status.
@@ -166,8 +182,7 @@ class LocalRepository {
     await _load();
     if (!_items!.containsKey(id)) return;
     final next = {..._items!}..remove(id);
-    await _persist(next, _settings!);
-    _items = next;
+    await _commit(next, _settings!);
   });
 
   Future<LifestyleSettings> getSettings() => _serial(() async {
@@ -177,7 +192,6 @@ class LocalRepository {
 
   Future<void> saveSettings(LifestyleSettings settings) => _serial(() async {
     await _load();
-    await _persist(_items!, settings);
-    _settings = settings;
+    await _commit(_items!, settings);
   });
 }
