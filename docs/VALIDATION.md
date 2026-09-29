@@ -50,3 +50,11 @@ Android 16 / API 36エミュレーターには、既存アプリのデータを�
 このWindows環境ではXcodeとiOSシミュレーターを利用できない。Mac環境は前述のとおり存在するが、この作業セッションからiOSビルド、iOSシミュレーター、iPhone実機操作は実施していない。新しいネイティブプラグインのiOSビルドはPRのmacOS CIで別途確認する。Macで実機検証する際はCocoaPodsを用意し、通知許可・拒否、3アクション、端末再起動、URLを開いた後のactive維持を確認する。
 
 PR #30のレビュー修正では、起動応答とcallbackが同じ「あとで」を同時に渡した場合の回帰テストを追加した。修正前はsnooze_countが2となって失敗し、通知操作を直列化した修正後は1となった。権限拒否中のホームに端末設定からの復旧案内が表示され、保存を続けられるwidgetテストも追加した。Windowsの英数字パスから `flutter analyze`（問題なし）と `flutter test`（40件すべて成功）を確認した。PRの初回HEADではCIの解析・テスト・Android debug APK・iOS simulatorビルドの4件が成功した。レビュー修正後のCI結果は別途確認する。
+
+## Issue #8: 通知一覧画面
+
+2026-09-30、Windowsの英数字パスの一時ジャンクションから `flutter analyze`（問題なし）と `flutter test`（48件すべて成功）を確認した。日付境界は注入時刻と固定UTC+9で23:59／翌日00:00、7暦日目、土日と日本の祝日、完了・削除の除外、「あとで」後の現在の次回日時をテストした。Widget testで全フィルターの空状態、ホームからの導線、320px幅の長文と内容画面を確認した。
+
+コミット `9179141` を利用者専用の英数字パスへ一時cloneし、専用Gradleキャッシュとコピーのみのファイル監視無効設定で `flutter build apk --debug` が成功した。画面操作用APKは一時コピーだけで別アプリIDへ変更して再ビルドし、既存アプリのデータを上書きせずにAndroid 16 / API 36のPixel 8エミュレーターへインストールした。空状態、今日・明日以降・休日・1週間後以降・完了済みの切替、次回日時とカテゴリ表示、長文の省略と内容画面での全文表示を確認した。幅を720pxへ狭めた画面でもフィルターと長文カードに崩れは見られなかった。検証用の項目は別アプリIDの保存領域だけに投入し、実データは使っていない。
+
+Android実機のGalaxy A25 5G（SC-53F）は検証候補として提供された。USBデバッグはSamsungの自動ブロッカーにより当初無効で、接続準備中のため、この時点では実機操作を成功扱いにしていない。設定手順は[Samsung公式の自動ブロッカー説明](https://www.samsung.com/jp/support/mobile-devices/protect-your-galaxy-device-with-the-new-auto-blocker-feature/)と[Android公式の開発者向けオプション説明](https://developer.android.com/studio/debug/dev-options)を2026-09-30に確認した。WindowsではXcodeがないためiOSビルド、iOSシミュレーター、iPhone実機操作は未実施。PRのmacOS CIでiOS simulatorビルドを別途確認する。
