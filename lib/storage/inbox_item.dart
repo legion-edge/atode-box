@@ -23,6 +23,7 @@ class InboxItem {
     this.scheduleReason,
     this.snoozeCount = 0,
     this.needsProcessing = true,
+    this.notificationId,
   }) : assert(snoozeCount >= 0);
 
   final String id;
@@ -39,6 +40,9 @@ class InboxItem {
   final int snoozeCount;
   final bool needsProcessing;
 
+  /// Stable OS request ID; assigned by the repository on first save.
+  final int? notificationId;
+
   InboxItem copyWith({
     Object? title = _unchanged,
     Object? url = _unchanged,
@@ -50,6 +54,7 @@ class InboxItem {
     Object? scheduleReason = _unchanged,
     int? snoozeCount,
     bool? needsProcessing,
+    int? notificationId,
   }) => InboxItem(
     id: id,
     originalText: originalText,
@@ -68,6 +73,7 @@ class InboxItem {
         : scheduleReason as String?,
     snoozeCount: snoozeCount ?? this.snoozeCount,
     needsProcessing: needsProcessing ?? this.needsProcessing,
+    notificationId: notificationId ?? this.notificationId,
   );
 
   InboxItem completed() => copyWith(status: ItemStatus.completed);
@@ -103,6 +109,7 @@ class InboxItem {
     'schedule_reason': scheduleReason,
     'snooze_count': snoozeCount,
     'needs_processing': needsProcessing,
+    'notification_id': notificationId,
   };
 
   factory InboxItem.fromJson(Map<String, dynamic> json) {
@@ -125,6 +132,7 @@ class InboxItem {
       scheduleReason: json['schedule_reason'] as String?,
       snoozeCount: json['snooze_count'] as int? ?? 0,
       needsProcessing: json['needs_processing'] as bool? ?? true,
+      notificationId: json['notification_id'] as int?,
     );
   }
 }

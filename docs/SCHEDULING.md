@@ -36,8 +36,8 @@
 
 ## 「あとで」と設定変更
 
-「あとで」はactiveの項目のみ受け付ける。1回目は翌日夜、2回目は休日昼（「見る」は休日夜）、3回目以降は操作日から1週間後の夜へ進める。`LocalRepository.snoozeItem` が `snooze_count`、context、`next_notify_at` を単一の永続書き込みで更新する。保存失敗時は回数も時刻も進まない。OS通知の更新は後続Issueで行う。
+「あとで」はactiveの項目のみ受け付ける。1回目は翌日夜、2回目は休日昼（「見る」は休日夜）、3回目以降は操作日から1週間後の夜へ進める。`LocalRepository.snoozeItem` が `snooze_count`、context、`next_notify_at` を単一の永続書き込みで更新する。保存失敗時は回数も時刻も進まない。Issue #7の通知ポートが保存後にOS予約を照合・更新する。
 
-設定画面は `saveSettingsWithSchedules` を使う。`SettingsChange.scheduleChanged` が真なら、保存済みactive項目を現在時刻と新設定から再計算し、設定と全予定を単一の永続書き込みにまとめる。再計算は現在のsnooze段階を維持する。completed/deletedは変更しない。初回案内完了フラグだけの変更では予定を触らない。既存の `saveSettings` は設定だけを保存する低水準APIとして残し、生活時間・休日の変更には使わない。OS通知の再登録は後続Issueの境界。
+設定画面は `saveSettingsWithSchedules` を使う。`SettingsChange.scheduleChanged` が真なら、保存済みactive項目を現在時刻と新設定から再計算し、設定と全予定を単一の永続書き込みにまとめる。再計算は現在のsnooze段階を維持する。completed/deletedは変更しない。初回案内完了フラグだけの変更では予定を触らない。既存の `saveSettings` は設定だけを保存する低水準APIとして残し、生活時間・休日の変更には使わない。Issue #7で保存後にOS通知を照合する。詳細は [ローカル通知](NOTIFICATIONS.md)。
 
 このIssueでは通知の表示・配信、AIによる自由な日時生成、スマート学習を実装しない。

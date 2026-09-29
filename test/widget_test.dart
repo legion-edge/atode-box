@@ -5,6 +5,7 @@ import 'package:atode_box/classification/category_presentation.dart';
 import 'package:atode_box/storage/inbox_item.dart';
 import 'package:atode_box/storage/local_repository.dart';
 import 'package:atode_box/storage/lifestyle_settings.dart';
+import 'package:atode_box/notifications/notification_port.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,38 @@ class MemoryDocumentStore implements DocumentStore {
   }
 }
 
+class WidgetTestNotificationPort implements NotificationPort {
+  WidgetTestNotificationPort({this.allowed = true});
+
+  bool allowed;
+  final requests = <int, LocalNotice>{};
+  @override
+  Future<void> initialize(void Function(NoticeResponse) onResponse) async {}
+  @override
+  Future<NoticeResponse?> launchResponse() async => null;
+  @override
+  Future<bool> permissionGranted() async => allowed;
+  @override
+  Future<bool> requestPermission() async => allowed;
+  @override
+  Future<List<PendingNotice>> pending() async => requests.values
+      .map((notice) => PendingNotice(notice.id, notice.payload))
+      .toList();
+  @override
+  Future<void> schedule(LocalNotice notice) async =>
+      requests[notice.id] = notice;
+  @override
+  Future<void> cancel(int id) async => requests.remove(id);
+}
+
+AtodeBoxApp testApp(
+  LocalRepository repository, {
+  NotificationPort? notificationPort,
+}) => AtodeBoxApp(
+  repository: repository,
+  notificationPort: notificationPort ?? WidgetTestNotificationPort(),
+);
+
 void main() {
   Future<void> pumpReady(
     WidgetTester tester,
@@ -31,7 +64,7 @@ void main() {
     await repository.saveSettings(
       const LifestyleSettings(initialSetupComplete: true),
     );
-    await tester.pumpWidget(AtodeBoxApp(repository: repository));
+    await tester.pumpWidget(testApp(repository));
     await tester.pumpAndSettle();
   }
 
@@ -45,7 +78,7 @@ void main() {
 
   testWidgets('初回は既定値を案内し、保存後の2回目は表示しない', (tester) async {
     final store = MemoryDocumentStore();
-    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpWidget(testApp(LocalRepository(store)));
     await tester.pumpAndSettle();
     expect(find.text('このまま使う'), findsOneWidget);
     expect(find.textContaining('18:00'), findsOneWidget);
@@ -60,7 +93,7 @@ void main() {
     );
 
     await tester.pumpWidget(const SizedBox());
-    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpWidget(testApp(LocalRepository(store)));
     await tester.pumpAndSettle();
     expect(find.text('このまま使う'), findsNothing);
     expect(find.text('あとで見たいこと'), findsOneWidget);
@@ -68,7 +101,7 @@ void main() {
 
   testWidgets('設定画面で時刻と休日を変更して保存できる', (tester) async {
     final store = MemoryDocumentStore();
-    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpWidget(testApp(LocalRepository(store)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('設定を変更する'));
     await tester.pumpAndSettle();
@@ -97,7 +130,7 @@ void main() {
 
   testWidgets('初回設定の保存失敗は案内を完了しない', (tester) async {
     final store = MemoryDocumentStore()..failWrite = true;
-    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpWidget(testApp(LocalRepository(store)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('このまま使う'));
     await tester.pumpAndSettle();
@@ -162,6 +195,30 @@ void main() {
     expect(items.last.nextNotifyAt!.isAfter(items.last.savedAt), isTrue);
     expect(items.last.context, 'next_day_evening');
     expect(items.last.category, ItemCategory.memo);
+  });
+
+  testWidgets('通知を拒否しても保存でき、端末設定からの復旧方法が見える', (tester) async {
+    final repository = LocalRepository(MemoryDocumentStore());
+    await repository.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    await tester.pumpWidget(
+      testApp(
+        repository,
+        notificationPort: WidgetTestNotificationPort(allowed: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('通知を許可する'), findsOneWidget);
+    expect(find.textContaining('端末の設定で'), findsOneWidget);
+    await tester.tap(find.text('通知を許可する'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('端末の設定で'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '拒否中のメモ');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect((await repository.allItems()).single.originalText, '拒否中のメモ');
   });
 
   testWidgets('空欄と空白だけの入力は保存しない', (tester) async {
@@ -268,7 +325,7 @@ void main() {
     await LocalRepository(store)
         .saveSettings(const LifestyleSettings(initialSetupComplete: true));
     store.failWrite = true;
-    await tester.pumpWidget(AtodeBoxApp(repository: LocalRepository(store)));
+    await tester.pumpWidget(testApp(LocalRepository(store)));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '消さないメモ');
     await tester.tap(find.text('登録'));

@@ -18,6 +18,9 @@
 ## 実装と検証
 
 - 変更に応じた `flutter analyze`、`flutter test`、対象OSビルドと代表操作を実施する。文書だけの変更ではMarkdownリンク、整合性、`git diff --check` を確認する。
+- Windowsでは、このリポジトリと同梱Flutter SDKの実パスに日本語が含まれる。日本語パスから直接 `flutter analyze` / `flutter test` を始めない。利用者専用の英数字パスに一時ジャンクションを作り、そこを作業ディレクトリとしてFlutterを実行する。テスト用シェーダーの生成は日本語パスで失敗することがある。`flutter analyze` の解析サーバーが失敗した場合は同じ英数字パスから再実行し、失敗を成功扱いにしない。
+- WindowsのAndroidビルドではジャンクションだけではGradleが日本語の実パスを参照して失敗する。先に変更をコミットし、利用者専用の英数字パスの一時ディレクトリへそのコミットをcloneしてビルドする。共有フォルダ（`C:\Users\Public`など）にソースを複製しない。ビルド用コピーのHEADを確認し、必要なら専用のGradleキャッシュを使う。作業終了後は一時コピーとジャンクションを安全に解除する。
+- このWindows環境のGradle 9.3.1では共有キャッシュの残存デーモンがロックを保持し、ビルドを60秒後に失敗させた。ビルド用コピーごとに利用者専用の新しい `GRADLE_USER_HOME` を設定する。Gradleのファイル監視で止まる場合は、一時コピーの `android/gradle.properties` に `org.gradle.vfs.watch=false` を追加する。失敗したデーモンが残る場合は同じキャッシュや同じコピーを使い回さず、原因を確認してから再試行する。この設定や一時コピーの変更を本体へ混ぜない。
 - シミュレータ、実機、静的解析、資料確認を分けて報告する。成功していない検証を成功と記載しない。
 - 公式資料で技術事実を確認したら、関連文書またはPRにURLと確認日を残す。
 - APIキー、署名鍵、認証情報、個人データ、生ログ、ローカル設定をコミットしない。`.gitignore` と差分を確認する。
@@ -27,7 +30,7 @@
 
 2026-09-28時点の検証環境は Apple M1 / macOS 26.6.2 / Xcode 27.0 / Flutter 3.47.5。iOSビルド・実行はMacとXcodeで行う。`flutter build ios --simulator` と実機向け `flutter build ios --debug --no-codesign` は成功済み。iPhone 17 / iOS 27.0シミュレーターとiPhone 16 Pro / iOS 26.7実機で初期画面を確認した。
 
-実機の署名・起動はMacローカルのXcodeでRunnerスキームにPersonal Teamを設定して実施した。SSH経由の署名付きCLIビルドはキーチェーンの `errSecInternalComponent` で失敗するため、署名なしビルドの成否と分けて報告する。Team設定や署名情報はコミットしない。CocoaPodsは未導入で、現行プロジェクトにはネイティブiOSプラグインがない。必要になった時点で公式手順に沿って導入する。詳細は [検証記録](docs/VALIDATION.md)。
+実機の署名・起動はMacローカルのXcodeでRunnerスキームにPersonal Teamを設定して実施した。SSH経由の署名付きCLIビルドはキーチェーンの `errSecInternalComponent` で失敗するため、署名なしビルドの成否と分けて報告する。Team設定や署名情報はコミットしない。2026-09-28時点のMacローカル環境ではCocoaPodsが未導入だった。Issue #7で `flutter_local_notifications` と `url_launcher` のネイティブiOSプラグインを追加し、GitHub CIのiOS simulatorビルドは成功した。Macローカルで再検証する際はCocoaPodsの導入状況を確認する。詳細は [検証記録](docs/VALIDATION.md)。
 
 ## GitHubと完了条件
 
