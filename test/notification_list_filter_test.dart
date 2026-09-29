@@ -128,4 +128,27 @@ void main() {
       'later',
     );
   });
+
+  test('次回日時がない旧active項目は今日に残し、追加フィルターには混ぜない', () {
+    final legacy = InboxItem(
+      id: 'legacy',
+      originalText: '古いメモ',
+      savedAt: DateTime.utc(2026, 9, 1),
+    );
+    expect(
+      query
+          .select([legacy], NotificationListFilter.today, settings, now)
+          .single
+          .id,
+      'legacy',
+    );
+    for (final filter in [
+      NotificationListFilter.tomorrowOnward,
+      NotificationListFilter.holidays,
+      NotificationListFilter.nextWeek,
+      NotificationListFilter.completed,
+    ]) {
+      expect(query.select([legacy], filter, settings, now), isEmpty);
+    }
+  });
 }

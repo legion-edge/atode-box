@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:atode_box/notification_list/notification_list_screen.dart';
 import 'package:atode_box/scheduling/schedule_engine.dart';
 import 'package:atode_box/storage/inbox_item.dart';
@@ -89,5 +91,80 @@ void main() {
     await tester.tap(find.text('明日以降'));
     await tester.pumpAndSettle();
     expect(find.text('明日のメモ'), findsOneWidget);
+  });
+
+  testWidgets('開いたまま現地0時を越えるとフィルターを再判定する', (tester) async {
+    var clock = DateTime.utc(2026, 9, 30, 14, 59); // 23:59 in UTC+9
+    final repository = LocalRepository(MemoryStore());
+    await repository.saveItem(
+      InboxItem(
+        id: 'midnight',
+        originalText: '日付をまたぐメモ',
+        savedAt: clock,
+        nextNotifyAt: DateTime.utc(2026, 9, 30, 15, 30),
+      ),
+    );
+    await repository.saveItem(
+      InboxItem(
+        id: 'week-edge',
+        originalText: '週の境界にあるメモ',
+        savedAt: clock,
+        nextNotifyAt: DateTime.utc(2026, 10, 7, 3),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: InkRipple.splashFactory),
+        home: NotificationListScreen(
+          repository: repository,
+          settings: settings,
+          now: () => clock,
+          zone: zone,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('明日以降'));
+    await tester.pumpAndSettle();
+    expect(find.text('日付をまたぐメモ'), findsOneWidget);
+    await tester.tap(find.text('1週間後以降'));
+    await tester.pumpAndSettle();
+    expect(find.text('週の境界にあるメモ'), findsOneWidget);
+
+    clock = DateTime.utc(2026, 9, 30, 15); // local midnight
+    await tester.pump(const Duration(minutes: 1));
+    await tester.pump();
+    expect(find.text('1週間後以降の予定はありません'), findsOneWidget);
+    await tester.tap(find.text('明日以降'));
+    await tester.pumpAndSettle();
+    expect(find.text('日付をまたぐメモ'), findsNothing);
+    expect(find.text('週の境界にあるメモ'), findsOneWidget);
+    await tester.tap(find.text('今日'));
+    await tester.pumpAndSettle();
+    expect(find.text('日付をまたぐメモ'), findsOneWidget);
+  });
+
+  testWidgets('旧スキーマの未予定activeを今日に表示し、内容も開ける', (tester) async {
+    final store = MemoryStore()
+      ..contents = jsonEncode({
+        'items': [
+          {
+            'id': 'legacy',
+            'original_text': '以前に保存したメモ',
+            'saved_at': '2026-09-01T12:00:00.000Z',
+            'status': 'active',
+          },
+        ],
+        'settings': {'initial_setup_complete': true},
+      });
+    await tester.pumpWidget(app(LocalRepository(store)));
+    await tester.pumpAndSettle();
+    expect(find.text('以前に保存したメモ'), findsOneWidget);
+    expect(find.text('次回未設定'), findsOneWidget);
+    await tester.tap(find.byType(Card));
+    await tester.pumpAndSettle();
+    expect(find.text('保存した内容'), findsOneWidget);
+    expect(find.text('次回未設定'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

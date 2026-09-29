@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../classification/category_presentation.dart';
@@ -30,16 +32,50 @@ class _NotificationListScreenState extends State<NotificationListScreen>
   NotificationListFilter _filter = NotificationListFilter.today;
   List<InboxItem>? _items;
   String? _error;
+  Timer? _dateRefresh;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    _scheduleDateRefresh();
+  }
+
+  @override
+  void didUpdateWidget(NotificationListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.now != widget.now || oldWidget.zone != widget.zone) {
+      _scheduleDateRefresh();
+    }
+  }
+
+  void _scheduleDateRefresh() {
+    _dateRefresh?.cancel();
+    final now = widget.now();
+    final local = widget.zone.toLocal(now);
+    final tomorrow = DateTime.utc(local.year, local.month, local.day + 1);
+    final boundary = widget.zone.fromLocal(
+      tomorrow.year,
+      tomorrow.month,
+      tomorrow.day,
+      0,
+      0,
+    );
+    final delay = boundary.difference(now);
+    _dateRefresh = Timer(
+      delay > Duration.zero ? delay : const Duration(seconds: 1),
+      () {
+        if (!mounted) return;
+        setState(() {});
+        _scheduleDateRefresh();
+      },
+    );
   }
 
   @override
   void dispose() {
+    _dateRefresh?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -48,6 +84,7 @@ class _NotificationListScreenState extends State<NotificationListScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _load();
+      _scheduleDateRefresh();
     }
   }
 
@@ -194,6 +231,9 @@ class _NotificationListScreenState extends State<NotificationListScreen>
                                                               ItemStatus
                                                                   .completed
                                                           ? '保存 ${formatListDate(widget.zone.toLocal(item.savedAt))}'
+                                                          : item.nextNotifyAt ==
+                                                                null
+                                                          ? '次回未設定'
                                                           : '次回 ${formatListDate(widget.zone.toLocal(item.nextNotifyAt!))}',
                                                     ),
                                                   ],
@@ -244,6 +284,8 @@ class SavedItemPreviewScreen extends StatelessWidget {
           const SizedBox(height: 16),
           if (item.status == ItemStatus.active && item.nextNotifyAt != null)
             Text('次回通知 ${formatListDate(zone.toLocal(item.nextNotifyAt!))}'),
+          if (item.status == ItemStatus.active && item.nextNotifyAt == null)
+            const Text('次回未設定'),
           if (item.status == ItemStatus.completed) const Text('完了済み'),
           const SizedBox(height: 24),
           SelectableText(item.originalText),

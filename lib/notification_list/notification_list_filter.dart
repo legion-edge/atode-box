@@ -43,8 +43,11 @@ class NotificationListQuery {
       if (filter == NotificationListFilter.completed) {
         return item.status == ItemStatus.completed;
       }
-      if (item.status != ItemStatus.active || item.nextNotifyAt == null) {
+      if (item.status != ItemStatus.active) {
         return false;
+      }
+      if (item.nextNotifyAt == null) {
+        return filter == NotificationListFilter.today;
       }
       final date = _civil(zone.toLocal(item.nextNotifyAt!));
       return switch (filter) {
@@ -56,15 +59,14 @@ class NotificationListQuery {
       };
     }).toList();
     result.sort((a, b) {
-      final aTime = filter == NotificationListFilter.completed
-          ? a.savedAt
-          : a.nextNotifyAt!;
-      final bTime = filter == NotificationListFilter.completed
-          ? b.savedAt
-          : b.nextNotifyAt!;
-      return filter == NotificationListFilter.completed
-          ? bTime.compareTo(aTime)
-          : aTime.compareTo(bTime);
+      if (filter == NotificationListFilter.completed) {
+        return b.savedAt.compareTo(a.savedAt);
+      }
+      final aTime = a.nextNotifyAt;
+      final bTime = b.nextNotifyAt;
+      if (aTime == null) return bTime == null ? 0 : 1;
+      if (bTime == null) return -1;
+      return aTime.compareTo(bTime);
     });
     return result;
   }
