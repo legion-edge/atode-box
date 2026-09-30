@@ -197,6 +197,20 @@ void main() {
     expect(items.last.category, ItemCategory.memo);
   });
 
+  testWidgets('ホームから通知一覧へ移動し、保存項目を確認できる', (tester) async {
+    final repository = LocalRepository(MemoryDocumentStore());
+    await pumpReady(tester, repository);
+    await tester.enterText(find.byType(TextField), '一覧で確認するメモ');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('通知一覧'));
+    await tester.pumpAndSettle();
+    expect(find.text('通知一覧'), findsOneWidget);
+    await tester.tap(find.text('明日以降'));
+    await tester.pumpAndSettle();
+    expect(find.text('一覧で確認するメモ'), findsOneWidget);
+  });
+
   testWidgets('通知を拒否しても保存でき、端末設定からの復旧方法が見える', (tester) async {
     final repository = LocalRepository(MemoryDocumentStore());
     await repository.saveSettings(

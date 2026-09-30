@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'classification/basic_classifier.dart';
 import 'classification/category_presentation.dart';
 import 'lifestyle_settings_screen.dart';
+import 'notification_list/notification_list_screen.dart';
 import 'notifications/flutter_notification_port.dart';
 import 'notifications/notification_controller.dart';
 import 'notifications/notification_port.dart';
@@ -229,6 +230,23 @@ class _HomeInputScreenState extends State<HomeInputScreen>
     }
   }
 
+  Future<void> _openNotificationList() async {
+    try {
+      final repository = await _getRepository();
+      if (!mounted || _settings == null) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => NotificationListScreen(
+            repository: repository,
+            settings: _settings!,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) _message('通知一覧を開けませんでした');
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -394,7 +412,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
             tooltip: '通知一覧',
-            onPressed: () => _message('通知一覧は準備中です'),
+            onPressed: _openNotificationList,
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
