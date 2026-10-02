@@ -76,6 +76,104 @@ void main() {
     messenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
+  testWidgets('拒否案内とキーボードでも入力欄の文字を表示できる高さを保つ', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 360);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    final repository = LocalRepository(MemoryDocumentStore());
+    await repository.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    await tester.pumpWidget(
+      testApp(
+        repository,
+        notificationPort: WidgetTestNotificationPort(allowed: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byType(TextField)).height,
+      greaterThanOrEqualTo(180),
+    );
+    await tester.ensureVisible(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), '入力を読める\n複数行');
+    await tester.pumpAndSettle();
+    expect(find.text('入力を読める\n複数行'), findsOneWidget);
+  });
+
+  for (final allowed in [false, true]) {
+    testWidgets('小画面・大文字・回転・キーボード閉じても長文を保ち登録できる ($allowed)', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final store = MemoryDocumentStore();
+      final repository = LocalRepository(store);
+      await repository.saveSettings(
+        const LifestyleSettings(initialSetupComplete: true),
+      );
+      await tester.pumpWidget(
+        testApp(
+          repository,
+          notificationPort: WidgetTestNotificationPort(allowed: allowed),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getSize(find.byType(TextField)).height,
+        greaterThanOrEqualTo(192),
+      );
+      await tester.ensureVisible(find.byType(TextField));
+      final input = List.generate(40, (index) => '記事の長文 $index').join('\n');
+      await tester.enterText(find.byType(TextField), input);
+      await tester.pumpAndSettle();
+      // Dismiss the simulated IME, then rotate and show it again.
+      tester.view.viewInsets = const FakeViewPadding();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        input,
+      );
+      tester.view.physicalSize = const Size(800, 360);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 120);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        input,
+      );
+      final scroll = tester.widget<SingleChildScrollView>(
+        find.byType(SingleChildScrollView).first,
+      );
+      expect(
+        scroll.keyboardDismissBehavior,
+        ScrollViewKeyboardDismissBehavior.onDrag,
+      );
+      await tester.ensureVisible(find.text('登録'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('登録'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        (await LocalRepository(store).allItems()).single.originalText,
+        input,
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+    });
+  }
+
   testWidgets('初回は既定値を案内し、保存後の2回目は表示しない', (tester) async {
     final store = MemoryDocumentStore();
     await tester.pumpWidget(testApp(LocalRepository(store)));

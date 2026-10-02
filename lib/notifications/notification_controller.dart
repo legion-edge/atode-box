@@ -11,12 +11,14 @@ class NotificationController {
     this.port, {
     required this.onOpen,
     required this.onError,
+    this.now = DateTime.now,
   });
 
   final LocalRepository repository;
   final NotificationPort port;
   final void Function(InboxItem) onOpen;
   final void Function(String) onError;
+  final DateTime Function() now;
   Future<void> _tail = Future.value();
   Future<void> _syncTail = Future.value();
 
@@ -72,11 +74,7 @@ class NotificationController {
         }
         return;
       case FlutterNotificationPort.snooze:
-        await repository.snoozeItem(
-          item.id,
-          const ScheduleEngine(),
-          DateTime.now(),
-        );
+        await repository.snoozeItem(item.id, const ScheduleEngine(), now());
         try {
           await sync();
         } catch (_) {
@@ -106,12 +104,14 @@ class NotificationController {
   }
 
   Future<void> _performSync() async {
-    await repository.adjustForTimeZone(const ScheduleEngine(), DateTime.now());
+    final instant = now();
+    await repository.adjustForTimeZone(const ScheduleEngine(), instant);
     final items = await repository.allItems();
     final pending = await port.pending();
     final pendingById = {for (final request in pending) request.id: request};
     final allowed = await port.permissionGranted();
-    final now = DateTime.now();
+    // Inexact alarms can remain pending after their nominal delivery time.
+    // Retain current reservations without recreating past notifications.
     final desired = allowed
         ? (items
                   .where(
@@ -119,7 +119,9 @@ class NotificationController {
                         item.status == ItemStatus.active &&
                         item.notificationId != null &&
                         item.nextNotifyAt != null &&
-                        item.nextNotifyAt!.isAfter(now),
+                        (item.nextNotifyAt!.isAfter(instant) ||
+                            pendingById[item.notificationId]?.payload ==
+                                noticeFor(item).payload),
                   )
                   .map(noticeFor)
                   .toList()

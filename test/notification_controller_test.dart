@@ -54,6 +54,190 @@ class FakePort implements NotificationPort {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('予定を過ぎても一致する未配信予約を保持し、予約なし過去項目は再配信しない', () async {
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort();
+    final instant = DateTime.utc(2026, 10, 2, 17, 36);
+    final due = instant.subtract(const Duration(minutes: 1));
+    for (final id in ['pending', 'delivered']) {
+      await repository.saveItem(
+        InboxItem(
+          id: id,
+          originalText: id,
+          savedAt: due,
+          nextNotifyAt: due,
+          category: ItemCategory.read,
+        ),
+      );
+    }
+    final pending = (await repository.getItem('pending'))!;
+    port.requests[pending.notificationId!] = noticeFor(pending);
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    expect(port.requests.keys, [pending.notificationId]);
+    expect((await repository.getItem('pending'))!.status, ItemStatus.active);
+  });
+
+  test('注入時計が予定を越える復帰でも既存予約を保持する', () async {
+    var instant = DateTime.utc(2026, 10, 2, 17, 34);
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort();
+    await repository.saveItem(
+      InboxItem(
+        id: 'late',
+        originalText: '記事',
+        savedAt: instant,
+        nextNotifyAt: instant.add(const Duration(minutes: 1)),
+      ),
+    );
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    final payload = port.requests.values.single.payload;
+    instant = instant.add(const Duration(minutes: 2));
+    await controller.sync();
+    expect(port.requests.values.single.payload, payload);
+    // Simulate delivery: a later sync must not recreate the past reservation.
+    port.requests.clear();
+    await controller.sync();
+    expect(port.requests, isEmpty);
+  });
+
+  for (final status in [ItemStatus.completed, ItemStatus.deleted]) {
+    test('過去の既存予約でも${status.name}なら取消す', () async {
+      final instant = DateTime.utc(2026, 10, 2, 17, 36);
+      final repository = LocalRepository(MemoryStore());
+      final port = FakePort();
+      await repository.saveItem(
+        InboxItem(
+          id: 'a',
+          originalText: '記事',
+          savedAt: instant,
+          nextNotifyAt: instant.subtract(const Duration(minutes: 1)),
+        ),
+      );
+      final item = (await repository.getItem('a'))!;
+      port.requests[item.notificationId!] = noticeFor(item);
+      await repository.updateItem(item.copyWith(status: status));
+      final controller = NotificationController(
+        repository,
+        port,
+        onOpen: (_) {},
+        onError: (_) {},
+        now: () => instant,
+      );
+      await controller.sync();
+      expect(port.requests, isEmpty);
+    });
+  }
+
+  test('過去の既存予約をあとですると古いpayloadを次回へ差し替える', () async {
+    final instant = DateTime.utc(2026, 10, 2, 17, 36);
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort();
+    await repository.saveItem(
+      InboxItem(
+        id: 'a',
+        originalText: '記事',
+        savedAt: instant,
+        nextNotifyAt: instant.subtract(const Duration(minutes: 1)),
+      ),
+    );
+    final item = (await repository.getItem('a'))!;
+    final oldNotice = noticeFor(item);
+    port.requests[item.notificationId!] = oldNotice;
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.handle(
+      NoticeResponse(FlutterNotificationPort.snooze, oldNotice.payload),
+    );
+    final updated = (await repository.getItem('a'))!;
+    expect(updated.snoozeCount, 1);
+    expect(port.requests.values.single.payload, noticeFor(updated).payload);
+    expect(port.requests.values.single.payload, isNot(oldNotice.payload));
+    expect(updated.nextNotifyAt!.isAfter(instant), isTrue);
+  });
+
+  test('拒否中は過去の一致予約も取消し、再許可で過去を再配信しない', () async {
+    final instant = DateTime.utc(2026, 10, 2, 17, 36);
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort()..allowed = false;
+    await repository.saveItem(
+      InboxItem(
+        id: 'a',
+        originalText: '記事',
+        savedAt: instant,
+        nextNotifyAt: instant.subtract(const Duration(minutes: 1)),
+      ),
+    );
+    final item = (await repository.getItem('a'))!;
+    port.requests[item.notificationId!] = noticeFor(item);
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    expect(port.requests, isEmpty);
+    port.allowed = true;
+    await controller.sync();
+    expect(port.requests, isEmpty);
+  });
+
+  test('過去の保持分も64件枠に含め、配信済みの空きへ未来予約を入れる', () async {
+    final instant = DateTime.utc(2026, 10, 2, 17, 36);
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort();
+    for (var index = 0; index < 65; index++) {
+      final at = instant.add(Duration(minutes: index == 64 ? 1 : -1));
+      await repository.saveItem(
+        InboxItem(
+          id: '$index',
+          originalText: '記事',
+          savedAt: instant,
+          nextNotifyAt: at,
+        ),
+      );
+      final item = (await repository.getItem('$index'))!;
+      if (index < 64) port.requests[item.notificationId!] = noticeFor(item);
+    }
+    final future = (await repository.getItem('64'))!;
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    expect(port.requests.length, 64);
+    expect(port.requests.containsKey(future.notificationId), isFalse);
+    final deliveredId = port.requests.keys.first;
+    port.requests.remove(deliveredId);
+    await controller.sync();
+    expect(port.requests.length, 64);
+    expect(port.requests.containsKey(future.notificationId), isTrue);
+    expect(port.requests.containsKey(deliveredId), isFalse);
+  });
+
   Future<(LocalRepository, FakePort, NotificationController, List<InboxItem>)>
   setup({bool allowed = true}) async {
     final repository = LocalRepository(MemoryStore());
