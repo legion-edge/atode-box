@@ -114,6 +114,34 @@ void main() {
     expect(port.requests, isEmpty);
   });
 
+  test('過去itemと不一致payloadの既存予約は取消し再登録しない', () async {
+    final instant = DateTime.utc(2026, 10, 2, 17, 36);
+    final repository = LocalRepository(MemoryStore());
+    final port = FakePort();
+    await repository.saveItem(
+      InboxItem(
+        id: 'a',
+        originalText: '記事',
+        savedAt: instant,
+        nextNotifyAt: instant.subtract(const Duration(minutes: 1)),
+      ),
+    );
+    final item = (await repository.getItem('a'))!;
+    port.requests[item.notificationId!] = noticeFor(
+      item.copyWith(nextNotifyAt: instant.subtract(const Duration(minutes: 2))),
+    );
+    final controller = NotificationController(
+      repository,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    expect(port.requests, isEmpty);
+    expect((await repository.getItem('a'))!.status, ItemStatus.active);
+  });
+
   for (final status in [ItemStatus.completed, ItemStatus.deleted]) {
     test('過去の既存予約でも${status.name}なら取消す', () async {
       final instant = DateTime.utc(2026, 10, 2, 17, 36);

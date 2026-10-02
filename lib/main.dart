@@ -455,11 +455,8 @@ class _HomeInputScreenState extends State<HomeInputScreen>
                       Expanded(
                         child: SizedBox(
                           height: max(
-                            max(
-                              180.0,
-                              96 * MediaQuery.textScalerOf(context).scale(1),
-                            ),
                             180.0,
+                            96 * MediaQuery.textScalerOf(context).scale(1),
                           ),
                           child: TextField(
                             controller: _input,
