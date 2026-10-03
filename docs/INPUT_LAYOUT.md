@@ -26,8 +26,16 @@ flutter analyze指摘なし、全83テスト成功。独立read-onlyレビュー
 
 ## 今回の境界
 
-本修正段階ではnativebuild・APK更新・端末操作・アニメーション設定変更を行っていない。親から最終結果報告後のnative候補準備指示があるまで、追加nativebuildを待つ。PRの自動OSビルドもHEADの[skip ci]で抑止し、CI成功とは報告しない。旧HEADのCI成功は旧候補の記録とする。
+修正実装段階ではnativebuildを待ち、code commit `65b2166`の[skip ci]で一時的に自動OSビルドを抑止した。後続の明示指示で下記統合候補を準備した。CI抑止は恒久条件にせず、この結果記録commitでは通常のPRチェックを再開する。最終HEADのCI結果はPRへ記録し、旧HEADの成功と混同しない。
 
 PR38のフィルター位置ずれ解消は本人確認済みで別件。新候補へ合わせる際にも維持する。PR41背景処理、通知preview、SSD運用は含めない。元通知試験アプリの4件と10月4日21:00予約・既存詳細試験データを保持する。
+
+## 統合試験候補versionCode 3
+
+PR38を保持したcandidate `8d2abcf36e1da3bb0f102bd4bf1507dabe80b8c8`に直接反映修正を含め、analyze問題なし・全87テスト成功・統合read-onlyレビュー重大指摘なし。既存Gradle cacheでarm64 debug APKを1本ビルドし、同package・同署名の既存詳細試験アプリへversionCode 3として上書き更新した。新規アプリ追加・保存データ削除はしていない。
+
+APK SHA256: `B2D47282AAA2AB7604115C726AF147F99F3B298C9C345960A9B203758B939EF1`。更新前後の両アプリ保存JSONと通知permission flagsが一致。元試験アプリの予約内容も一致し、OS alarmは元版のみ、詳細試験は予約なし。更新前から詳細試験の通知は拒否、USER_SET/USER_FIXEDが付いていた。今回権限・アニメーション設定へ触れていない。
+
+これはnativebuild・更新・保全照合の結果であり、実IME同期や本人の触感改善成功ではない。新候補の本人開閉確認を待つ。
 
 公式資料（同日確認）: [AnimatedPadding](https://api.flutter.dev/flutter/widgets/AnimatedPadding-class.html)、[Scaffold resize](https://api.flutter.dev/flutter/material/Scaffold/resizeToAvoidBottomInset.html)、[disableAnimationsOf](https://api.flutter.dev/flutter/widgets/MediaQuery/disableAnimationsOf.html)、[GitHub workflow skip](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)。
