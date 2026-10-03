@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:atode_box/notifications/flutter_notification_port.dart';
 import 'package:atode_box/notifications/notification_controller.dart';
 import 'package:atode_box/notifications/notification_port.dart';
+import 'package:atode_box/scheduling/schedule_engine.dart';
 import 'package:atode_box/storage/inbox_item.dart';
+import 'package:atode_box/storage/lifestyle_settings.dart';
 import 'package:atode_box/storage/local_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,6 +20,7 @@ class MemoryStore implements DocumentStore {
 class FakePort implements NotificationPort {
   bool allowed = true;
   bool failSchedule = false;
+  bool failCancel = false;
   final requests = <int, LocalNotice>{};
   void Function(NoticeResponse)? callback;
   NoticeResponse? launchNotice;
@@ -39,7 +42,14 @@ class FakePort implements NotificationPort {
   Future<bool> requestPermission() async => allowed;
   @override
   Future<List<PendingNotice>> pending() async => requests.values
-      .map((notice) => PendingNotice(notice.id, notice.payload))
+      .map(
+        (notice) => PendingNotice(
+          notice.id,
+          notice.payload,
+          title: notice.title,
+          body: notice.body,
+        ),
+      )
       .toList();
   @override
   Future<void> schedule(LocalNotice notice) async {
@@ -48,11 +58,159 @@ class FakePort implements NotificationPort {
   }
 
   @override
-  Future<void> cancel(int id) async => requests.remove(id);
+  Future<void> cancel(int id) async {
+    if (failCancel) throw const FileSystemException('OS cancellation failed');
+    requests.remove(id);
+  }
+}
+
+/// Interleave a durable mutation after the controller reads a snapshot.
+class InterleavingRepository extends LocalRepository {
+  InterleavingRepository(super.store);
+  Future<void> Function()? afterRead;
+
+  @override
+  Future<InboxItem?> getItem(String id) async {
+    final snapshot = await super.getItem(id);
+    final action = afterRead;
+    afterRead = null;
+    await action?.call();
+    return snapshot;
+  }
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final action in [
+    FlutterNotificationPort.complete,
+    FlutterNotificationPort.snooze,
+  ]) {
+    for (final mutation in ['metadata', 'reschedule', 'delete']) {
+      test('通知$actionの照合後に$mutationが入っても最新保存を失わない', () async {
+        final instant = DateTime.utc(2026, 10, 1);
+        const scheduler = ScheduleEngine(
+          zone: FixedOffsetZone(Duration(hours: 9)),
+        );
+        final repo = InterleavingRepository(MemoryStore());
+        final port = FakePort();
+        await repo.saveItem(
+          InboxItem(
+            id: 'race',
+            originalText: '記事',
+            savedAt: instant,
+            category: ItemCategory.read,
+          ),
+          scheduler: scheduler,
+          now: instant,
+        );
+        final item = (await repo.getItem('race'))!;
+        final controller = NotificationController(
+          repo,
+          port,
+          onOpen: (_) {},
+          onError: (_) {},
+          now: () => instant,
+        );
+        await controller.sync();
+        repo.afterRead = () async {
+          if (mutation == 'delete') {
+            await repo.deleteItem(item.id);
+          } else {
+            await repo.editItem(
+              item.id,
+              title: '最新タイトル',
+              url: 'https://example.com/new',
+              category: mutation == 'reschedule'
+                  ? ItemCategory.watch
+                  : ItemCategory.read,
+              scheduler: scheduler,
+              now: instant,
+            );
+          }
+        };
+        await controller.handle(
+          NoticeResponse(action, noticeFor(item).payload),
+        );
+        final result = (await repo.getItem(item.id))!;
+        expect(result.originalText, item.originalText);
+        if (mutation == 'delete') {
+          expect(result.status, ItemStatus.deleted);
+          expect(result.snoozeCount, 0);
+        } else {
+          expect(result.title, '最新タイトル');
+          expect(result.url, 'https://example.com/new');
+          if (mutation == 'reschedule') {
+            expect(result.status, ItemStatus.active);
+            expect(result.category, ItemCategory.watch);
+            expect(result.snoozeCount, 0);
+            expect(result.nextNotifyAt, isNot(item.nextNotifyAt));
+          } else {
+            expect(
+              result.status,
+              action == FlutterNotificationPort.complete
+                  ? ItemStatus.completed
+                  : ItemStatus.active,
+            );
+            expect(
+              result.snoozeCount,
+              action == FlutterNotificationPort.snooze ? 1 : 0,
+            );
+          }
+        }
+      });
+    }
+  }
+
+  test('カテゴリ編集で予定が同時刻でも通知文面を更新し、削除後は古いアクションを無視する', () async {
+    final instant = DateTime.utc(2026, 10, 1);
+    const scheduler = ScheduleEngine(zone: FixedOffsetZone(Duration(hours: 9)));
+    final repo = LocalRepository(MemoryStore());
+    final port = FakePort();
+    await repo.saveSettings(const LifestyleSettings(afterHomeMinute: 21 * 60));
+    await repo.saveItem(
+      InboxItem(
+        id: 'same',
+        originalText: '動画',
+        savedAt: instant,
+        category: ItemCategory.watch,
+      ),
+      scheduler: scheduler,
+      now: instant,
+    );
+    final before = (await repo.getItem('same'))!;
+    final controller = NotificationController(
+      repo,
+      port,
+      onOpen: (_) {},
+      onError: (_) {},
+      now: () => instant,
+    );
+    await controller.sync();
+    expect(port.requests[before.notificationId]!.title, '見る');
+    final edited = await repo.editItem(
+      before.id,
+      title: null,
+      url: '',
+      category: ItemCategory.doTask,
+      scheduler: scheduler,
+      now: instant,
+    );
+    expect(edited.nextNotifyAt, before.nextNotifyAt);
+    port.failCancel = true;
+    await expectLater(controller.sync(), throwsA(isA<FileSystemException>()));
+    expect(port.requests[edited.notificationId]!.title, '見る');
+    port.failCancel = false;
+    await controller.sync();
+    expect(port.requests[edited.notificationId]!.title, 'やる');
+    await repo.deleteItem(edited.id);
+    await controller.sync();
+    expect(port.requests, isEmpty);
+    await controller.handle(
+      NoticeResponse(FlutterNotificationPort.snooze, noticeFor(edited).payload),
+    );
+    expect((await repo.getItem(edited.id))!.status, ItemStatus.deleted);
+  });
 
   test('予定を過ぎても一致する未配信予約を保持し、予約なし過去項目は再配信しない', () async {
     final repository = LocalRepository(MemoryStore());

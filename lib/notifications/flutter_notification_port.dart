@@ -109,7 +109,14 @@ class FlutterNotificationPort implements NotificationPort {
   @override
   Future<List<PendingNotice>> pending() async =>
       (await _plugin.pendingNotificationRequests())
-          .map((request) => PendingNotice(request.id, request.payload))
+          .map(
+            (request) => PendingNotice(
+              request.id,
+              request.payload,
+              title: request.title,
+              body: request.body,
+            ),
+          )
           .toList();
 
   @override
