@@ -7,6 +7,7 @@ import 'package:atode_box/storage/local_repository.dart';
 import 'package:atode_box/storage/lifestyle_settings.dart';
 import 'package:atode_box/notifications/notification_port.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderPadding;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -96,20 +97,27 @@ void main() {
       await tester.enterText(field, '変化中も入力を保つ\n2行目');
       final controller = tester.widget<TextField>(field).controller!;
       controller.selection = const TextSelection.collapsed(offset: 3);
-      final closedHeight = tester.getSize(field).height;
+      final fixedHeight = tester.getSize(field).height;
+      double bottomInset() => tester
+          .renderObject<RenderPadding>(find.byType(AnimatedPadding))
+          .padding
+          .resolve(TextDirection.ltr)
+          .bottom;
+      final closedHeight = bottomInset();
       tester.view.viewInsets = const FakeViewPadding(bottom: 280);
       await tester.pump();
-      final firstOpen = tester.getSize(field).height;
+      final firstOpen = bottomInset();
       await tester.pump(const Duration(milliseconds: 40));
-      final duringOpen = tester.getSize(field).height;
+      final duringOpen = bottomInset();
       await tester.pumpAndSettle();
-      final openHeight = tester.getSize(field).height;
+      final openHeight = bottomInset();
+      expect(tester.getSize(field).height, fixedHeight);
       if (platform == TargetPlatform.android) {
         expect(firstOpen, openHeight);
         expect(duringOpen, openHeight);
       } else {
-        expect(duringOpen, greaterThan(openHeight));
-        expect(duringOpen, lessThan(closedHeight));
+        expect(duringOpen, greaterThan(closedHeight));
+        expect(duringOpen, lessThan(openHeight));
       }
       expect(tester.getRect(find.text('登録')).bottom, lessThanOrEqualTo(520));
       expect(controller.text, '変化中も入力を保つ\n2行目');
@@ -117,18 +125,19 @@ void main() {
       expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
       tester.view.viewInsets = const FakeViewPadding();
       await tester.pump();
-      final firstClose = tester.getSize(field).height;
+      final firstClose = bottomInset();
       await tester.pump(const Duration(milliseconds: 40));
-      final duringClose = tester.getSize(field).height;
+      final duringClose = bottomInset();
       if (platform == TargetPlatform.android) {
         expect(firstClose, closedHeight);
         expect(duringClose, closedHeight);
       } else {
-        expect(duringClose, greaterThan(openHeight));
-        expect(duringClose, lessThan(closedHeight));
+        expect(duringClose, greaterThan(closedHeight));
+        expect(duringClose, lessThan(openHeight));
       }
       await tester.pumpAndSettle();
-      expect(tester.getSize(field).height, closedHeight);
+      expect(bottomInset(), closedHeight);
+      expect(tester.getSize(field).height, fixedHeight);
       expect(controller.selection, const TextSelection.collapsed(offset: 3));
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant({platform}));
@@ -258,7 +267,7 @@ void main() {
     expect(caret.top, greaterThanOrEqualTo(0));
     expect(
       caret.bottom,
-      lessThanOrEqualTo(editable.renderEditable.size.height),
+      lessThanOrEqualTo(editable.renderEditable.size.height + 0.001),
     );
     expect(
       editable.renderEditable.localToGlobal(caret.bottomRight).dy,

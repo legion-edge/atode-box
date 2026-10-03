@@ -456,76 +456,66 @@ class _HomeInputScreenState extends State<HomeInputScreen>
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          '今じゃない。でも忘れたくない。',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text('気になることを、そのまま入れておこう。'),
-                        const SizedBox(height: 20),
-                        if (_notificationsAllowed == false) ...[
-                          const Text('通知はオフです。保存はそのまま使えます。'),
-                          TextButton(
-                            onPressed: _requestNotificationPermission,
-                            child: const Text('通知を許可する'),
-                          ),
-                          const Text('一度拒否した場合は、端末の設定で「あとでボックス」の通知をオンにしてください。'),
-                        ],
-                        if (_notificationError != null)
-                          Text(_notificationError!),
-                        Expanded(
-                          child: SizedBox(
-                            height: max(
-                              180.0,
-                              96 * MediaQuery.textScalerOf(context).scale(1),
-                            ),
-                            child: TextField(
-                              controller: _input,
-                              focusNode: _inputFocus,
-                              expands: true,
-                              minLines: null,
-                              maxLines: null,
-                              textInputAction: TextInputAction.newline,
-                              decoration: const InputDecoration(
-                                labelText: 'あとで見たいこと',
-                                hintText: 'URL、行きたい場所、買い物、メモなど',
-                                alignLabelWithHint: true,
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _saving
-                              ? null
-                              : () => _save(_input.text, fromInput: true),
-                          icon: const Icon(Icons.add),
-                          label: const Text('登録'),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: _saving ? null : _pasteAndSave,
-                          icon: const Icon(Icons.content_paste),
-                          label: const Text('貼り付けて追加'),
-                        ),
-                      ],
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    '今じゃない。でも忘れたくない。',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('気になることを、そのまま入れておこう。'),
+                  const SizedBox(height: 20),
+                  if (_notificationsAllowed == false) ...[
+                    const Text('通知はオフです。保存はそのまま使えます。'),
+                    TextButton(
+                      onPressed: _requestNotificationPermission,
+                      child: const Text('通知を許可する'),
+                    ),
+                    const Text('一度拒否した場合は、端末の設定で「あとでボックス」の通知をオンにしてください。'),
+                  ],
+                  if (_notificationError != null) Text(_notificationError!),
+                  SizedBox(
+                    // View size is independent of IME insets. Rotation
+                    // and text scaling may change this fixed height.
+                    height:
+                        (MediaQuery.sizeOf(context).height * 0.24).clamp(
+                          144.0,
+                          180.0,
+                        ) *
+                        max(1.0, MediaQuery.textScalerOf(context).scale(1)),
+                    child: TextField(
+                      controller: _input,
+                      focusNode: _inputFocus,
+                      expands: true,
+                      minLines: null,
+                      maxLines: null,
+                      textInputAction: TextInputAction.newline,
+                      decoration: const InputDecoration(
+                        labelText: 'あとで見たいこと',
+                        hintText: 'URL、行きたい場所、買い物、メモなど',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _save(_input.text, fromInput: true),
+                    icon: const Icon(Icons.add),
+                    label: const Text('登録'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : _pasteAndSave,
+                    icon: const Icon(Icons.content_paste),
+                    label: const Text('貼り付けて追加'),
+                  ),
+                ],
               ),
             ),
           ),
