@@ -23,3 +23,13 @@ Expanded、IntrinsicHeight、残り高さを埋めるConstrainedBoxを除き、�
 同じcontroller・focus・selectionを保持し、既存caret可視化のguardとpost-frame処理を残す。Androidのinset即時反映、iOSの120ms補間、動きを減らす設定、PR38の位置が動かないfilterを維持する。5条件の連続IME変化で固定高さ、長文の内部scroll、末尾caret位置、ボタンのhit testと到達を確認する。既存の回転・長文保存・安全領域試験も実行する。
 
 診断buffer・VM extension・RenderObject計測はこの候補に含めない。端末更新・本人操作は親の案内後。元アプリ4件・本日21時JST予約と詳細試験の保存データ・権限を保全し、mergeは行わない。
+
+## v5本人結果と枠全体の可視化候補
+
+本人は「固定したことで違和感はほぼなくなった」が「入力枠の下がキーボードと被る」と報告。通知拒否案内がある空欄での添付画像は親が確認し、この作業者は直接視覚確認していない。
+
+Widget試験で空欄のcaretだけ見え続けて枠下端が隠れる条件を再現した。Galaxy相当画面で入力枠はtop295／bottom475／height180px、caret底385px。IME上端469.33pxまたは453.33pxでは枠下端だけ隠れる。caretだけのbringIntoViewでは枠全体を保証しない。
+
+固定SizedBoxをKeyで識別し、フォーカス獲得とIME余白更新のpost-frameで外枠をページviewportと比較する。枠が収まる場合のみkeepVisibleAtEnd、keepVisibleAtStartで必要量だけスクロールし、既に可視な枠は動かさない。追加の時間アニメーションは使用しない。続けて既存caret可視化を行う。枠がviewportより大きい場合は全体表示が不可能なので、固定高さとcaret可視化を優先する。focus listenerはdispose時に解除する。
+
+追加6条件（通知許可／拒否×Galaxy通常・狭幅大文字・横画面大文字）で空欄の連続開閉、複数IME高さ、IMEを開いたまま再フォーカス、過大枠fallback、可視時のスクロール位置維持、controller／focus／selection保持を確認した。既存の長文・回転・末尾caret・操作到達を含む全98テストと静的解析が成功。独立レビューに重大な指摘なし。必要なページ移動の体感、実機での枠全体表示は候補導入後の本人受入で確認する。

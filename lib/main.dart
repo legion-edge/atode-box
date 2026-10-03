@@ -55,6 +55,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
     with WidgetsBindingObserver {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
+  final _inputFrameKey = GlobalKey();
   final _random = Random.secure();
   Future<LocalRepository>? _repository;
   LifestyleSettings? _settings;
@@ -68,6 +69,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _inputFocus.addListener(_revealInputCaret);
     _loadSettings();
     _initializeNotifications();
   }
@@ -257,6 +259,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _inputFocus.removeListener(_revealInputCaret);
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
@@ -355,9 +358,30 @@ class _HomeInputScreenState extends State<HomeInputScreen>
 
   void _revealInputCaret() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_inputFocus.hasFocus || !_input.selection.isValid) {
+      if (!mounted || !_inputFocus.hasFocus) {
         return;
       }
+      final frameContext = _inputFrameKey.currentContext;
+      final frame = frameContext?.findRenderObject();
+      final page = frameContext == null
+          ? null
+          : Scrollable.maybeOf(frameContext);
+      if (frame is RenderBox &&
+          frame.hasSize &&
+          page != null &&
+          frame.size.height <= page.position.viewportDimension) {
+        // Reveal the outer frame, rather than only the empty field's caret.
+        // Keep already-visible edges in place; never add a timed transition.
+        page.position.ensureVisible(
+          frame,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+        page.position.ensureVisible(
+          frame,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+        );
+      }
+      if (!_input.selection.isValid) return;
       _inputFocus.context
           ?.findAncestorStateOfType<EditableTextState>()
           ?.bringIntoView(_input.selection.extent);
@@ -478,6 +502,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
                   ],
                   if (_notificationError != null) Text(_notificationError!),
                   SizedBox(
+                    key: _inputFrameKey,
                     // View size is independent of IME insets. Rotation
                     // and text scaling may change this fixed height.
                     height:
