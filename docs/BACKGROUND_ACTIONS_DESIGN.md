@@ -91,7 +91,17 @@ fake/unit成功は実機成功と区別する。最後に専用試験itemでfore
 
 匿名テスト表へ追加する条件: commit→予約前停止→予定超過→再open、OS成功→ack前停止、engine破棄→native完了／応答喪失→待機writer復旧、old future／late pending／displayed／unknownの各移行、同ID再作成と復元epochの巻戻り。fake成功ではOS分類・回復を証明できないためnative統合と実機受入を分ける。
 
-先行可能: runtime非接続のparser・pure reducer・transaction repository契約・匿名barrier／fault tests。永続化migrationやheadless action有効化は上記条件と依存レビューが終わるまで進めない。今回は設計のみで、新自動テストはまだ実施していない。
+先行可能: runtime非接続のparser・pure reducer・transaction repository契約・匿名barrier／fault tests。永続化migrationやheadless action有効化は上記条件と依存レビューが終わるまで進めない。設計段階のテスト表は将来の検証計画であり、実施済み範囲は下記と区別する。
+
+## 純粋領域の部分実装（2026-10-04 JST）
+
+`lib/notifications/background_action.dart`にv2 payload parser、既存ScheduleEngine／InboxItemを利用するpure reducer、将来adapterのtransaction契約、3回までのCAS再読込serviceを追加した。既存通知payloadは引き続き旧形式であり、新コードの呼出し元・durable adapterはない。利用者の挙動は変更されない。`open`／本文tapは新serviceの対象外で、既存のUI起動経路を維持する。
+
+`test/background_action_test.dart`は匿名in-memory fakeで、不正／旧payload、全token照合、同時刻の20連打、complete後duplicate、同snapshotの2writer、CAS競合時のmetadata／settings再読込、競合上限、commit前失敗と曖昧commit後の再受信を検証する。settings再読込は観測fake schedulerで渡された設定を直接確認する（初回snoozeの既存ルールはafterHomeMinuteを使わないため、予定差のassertにはしない）。11テスト成功、flutter analyze問題なし。独立レビューでコード本体に重大指摘なし。
+
+fakeの同期CASとdirtyフラグは契約のテストであり、SQLite atomic outbox、実engine間排他、復元検出、OS通知回復の証明ではない。JSON保存の置換・SDK追加・manifest・headless登録・showsUserInterface設定は変更していない。Issue40を完了扱いにせず、上記の実装停止条件を保持する。
+
+今回の指示はローカル純粋テストだけのため、追加OSビルドを起動せず、HEAD commitの`[skip ci]`で既存pull_request workflowを抑止する。CI成功とは報告しない。チェックはpendingとなり得るため、本Draftをそのままmergeできる状態とはしない。根拠: [GitHub workflow skip](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)（同日確認）。
 
 ## 根拠（2026-10-04 JST確認）
 
