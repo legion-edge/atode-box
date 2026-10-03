@@ -1,9 +1,16 @@
 import '../storage/inbox_item.dart';
 
 class PendingNotice {
-  const PendingNotice(this.id, this.payload);
+  const PendingNotice(
+    this.id,
+    this.payload, {
+    required this.title,
+    required this.body,
+  });
   final int id;
   final String? payload;
+  final String? title;
+  final String? body;
 }
 
 class NoticeResponse {

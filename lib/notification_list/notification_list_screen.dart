@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../classification/category_presentation.dart';
+import '../item_detail/item_detail_screen.dart';
 import '../scheduling/schedule_engine.dart';
 import '../storage/inbox_item.dart';
 import '../storage/lifestyle_settings.dart';
@@ -15,10 +16,12 @@ class NotificationListScreen extends StatefulWidget {
     required this.repository,
     required this.settings,
     this.now = DateTime.now,
+    this.syncNotifications,
     this.zone = const DeviceZone(),
   });
 
   final LocalRepository repository;
+  final Future<void> Function()? syncNotifications;
   final LifestyleSettings settings;
   final DateTime Function() now;
   final ScheduleZone zone;
@@ -185,11 +188,14 @@ class _NotificationListScreenState extends State<NotificationListScreen>
                                     onTap: () => Navigator.of(context)
                                         .push(
                                           MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                SavedItemPreviewScreen(
-                                                  item: item,
-                                                  zone: widget.zone,
-                                                ),
+                                            builder: (_) => ItemDetailScreen(
+                                              item: item,
+                                              repository: widget.repository,
+                                              now: widget.now,
+                                              syncNotifications:
+                                                  widget.syncNotifications,
+                                              zone: widget.zone,
+                                            ),
                                           ),
                                         )
                                         .then((_) => _load()),
@@ -261,36 +267,3 @@ class _NotificationListScreenState extends State<NotificationListScreen>
 
 String formatListDate(DateTime date) =>
     '${date.year}年${date.month}月${date.day}日 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-
-/// A read-only destination until the full item detail screen in Issue #9.
-class SavedItemPreviewScreen extends StatelessWidget {
-  const SavedItemPreviewScreen({
-    super.key,
-    required this.item,
-    this.zone = const DeviceZone(),
-  });
-
-  final InboxItem item;
-  final ScheduleZone zone;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('保存した内容')),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          CategoryBadge(item.category),
-          const SizedBox(height: 16),
-          if (item.status == ItemStatus.active && item.nextNotifyAt != null)
-            Text('次回通知 ${formatListDate(zone.toLocal(item.nextNotifyAt!))}'),
-          if (item.status == ItemStatus.active && item.nextNotifyAt == null)
-            const Text('次回未設定'),
-          if (item.status == ItemStatus.completed) const Text('完了済み'),
-          const SizedBox(height: 24),
-          SelectableText(item.originalText),
-        ],
-      ),
-    ),
-  );
-}

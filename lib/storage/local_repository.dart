@@ -289,6 +289,86 @@ class LocalRepository {
     await _commit(next, _settings!);
   });
 
+  /// Validate a notification and mutate the latest record in one serial action.
+  Future<InboxItem?> completeFromNotification(String id, DateTime expectedAt) =>
+      _serial(() async {
+        await _load();
+        final item = _items![id];
+        if (!_currentNotification(item, expectedAt)) return null;
+        final updated = item!.completed();
+        await _commit({..._items!, id: updated}, _settings!);
+        return updated;
+      });
+
+  Future<InboxItem?> snoozeFromNotification(
+    String id,
+    DateTime expectedAt,
+    ScheduleEngine scheduler,
+    DateTime now,
+  ) => _serial(() async {
+    await _load();
+    final item = _items![id];
+    if (!_currentNotification(item, expectedAt)) return null;
+    final schedule = scheduler.snooze(item!, _settings!, now);
+    final updated = item.snoozed(
+      schedule.at,
+      notificationContext: schedule.context.storageKey,
+      reason: schedule.reason,
+    );
+    _scheduleZone = _zone(now);
+    await _commit({..._items!, id: updated}, _settings!);
+    return updated;
+  });
+
+  bool _currentNotification(InboxItem? item, DateTime expectedAt) =>
+      item != null &&
+      item.status == ItemStatus.active &&
+      item.nextNotifyAt?.isAtSameMomentAs(expectedAt) == true;
+
+  /// Edit metadata against the latest record; preserve original and action state.
+  Future<InboxItem> editItem(
+    String id, {
+    required String? title,
+    required String url,
+    required ItemCategory category,
+    required ScheduleEngine scheduler,
+    required DateTime now,
+  }) => _serial(() async {
+    await _load();
+    final previous = _items![id];
+    if (previous == null || previous.status == ItemStatus.deleted) {
+      throw StateError('Item is unavailable');
+    }
+    var updated = previous.copyWith(title: title, url: url, category: category);
+    if (updated.status == ItemStatus.active &&
+        (previous.category != category || previous.nextNotifyAt == null)) {
+      updated = _withSchedule(
+        updated,
+        scheduler.recalculate(updated, _settings!, now),
+      );
+    } else if (updated.status != ItemStatus.active) {
+      updated = updated.copyWith(
+        nextNotifyAt: null,
+        context: null,
+        scheduleReason: null,
+      );
+    }
+    await _commit({..._items!, id: updated}, _settings!);
+    return updated;
+  });
+
+  Future<void> deleteItem(String id) => _serial(() async {
+    await _load();
+    final item = _items![id];
+    if (item == null) throw StateError('Item does not exist');
+    final updated = item.deleted().copyWith(
+      nextNotifyAt: null,
+      context: null,
+      scheduleReason: null,
+    );
+    await _commit({..._items!, id: updated}, _settings!);
+  });
+
   /// Physical removal is separate from the domain's soft-deleted status.
   Future<void> removeItem(String id) => _serial(() async {
     await _load();

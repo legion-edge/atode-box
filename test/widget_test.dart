@@ -39,7 +39,14 @@ class WidgetTestNotificationPort implements NotificationPort {
   Future<bool> requestPermission() async => allowed;
   @override
   Future<List<PendingNotice>> pending() async => requests.values
-      .map((notice) => PendingNotice(notice.id, notice.payload))
+      .map(
+        (notice) => PendingNotice(
+          notice.id,
+          notice.payload,
+          title: notice.title,
+          body: notice.body,
+        ),
+      )
       .toList();
   @override
   Future<void> schedule(LocalNotice notice) async =>

@@ -239,6 +239,13 @@ class _HomeInputScreenState extends State<HomeInputScreen>
           builder: (_) => NotificationListScreen(
             repository: repository,
             settings: _settings!,
+            syncNotifications: () async {
+              final controller = _notifications;
+              if (controller == null) {
+                throw StateError('Notifications unavailable');
+              }
+              await controller.sync();
+            },
           ),
         ),
       );

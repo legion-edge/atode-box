@@ -66,7 +66,13 @@ class NotificationController {
         onOpen(item);
         return;
       case FlutterNotificationPort.complete:
-        await repository.updateItem(item.completed());
+        if (await repository.completeFromNotification(
+              item.id,
+              item.nextNotifyAt!,
+            ) ==
+            null) {
+          return;
+        }
         try {
           await sync();
         } catch (_) {
@@ -74,7 +80,15 @@ class NotificationController {
         }
         return;
       case FlutterNotificationPort.snooze:
-        await repository.snoozeItem(item.id, const ScheduleEngine(), now());
+        if (await repository.snoozeFromNotification(
+              item.id,
+              item.nextNotifyAt!,
+              const ScheduleEngine(),
+              now(),
+            ) ==
+            null) {
+          return;
+        }
         try {
           await sync();
         } catch (_) {
@@ -102,6 +116,11 @@ class NotificationController {
     );
     return result;
   }
+
+  bool _matches(PendingNotice? request, LocalNotice notice) =>
+      request?.payload == notice.payload &&
+      request?.title == notice.title &&
+      request?.body == notice.body;
 
   Future<void> _performSync() async {
     final instant = now();
@@ -132,13 +151,13 @@ class NotificationController {
     final wanted = {for (final notice in desired) notice.id: notice};
     for (final request in pending) {
       if (wanted[request.id] == null ||
-          wanted[request.id]!.payload != request.payload) {
+          !_matches(request, wanted[request.id]!)) {
         await port.cancel(request.id);
       }
     }
     if (!allowed) return;
     for (final notice in desired) {
-      if (pendingById[notice.id]?.payload != notice.payload) {
+      if (!_matches(pendingById[notice.id], notice)) {
         await port.schedule(notice);
       }
     }
