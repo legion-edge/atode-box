@@ -83,6 +83,198 @@ void main() {
     messenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets('IME余白はAndroidで即反映し、iOSは短い補間を保つ ($platform)', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      final repo = LocalRepository(MemoryDocumentStore());
+      await pumpReady(tester, repo);
+      final field = find.byType(TextField);
+      await tester.enterText(field, '変化中も入力を保つ\n2行目');
+      final controller = tester.widget<TextField>(field).controller!;
+      controller.selection = const TextSelection.collapsed(offset: 3);
+      final closedHeight = tester.getSize(field).height;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      await tester.pump();
+      final firstOpen = tester.getSize(field).height;
+      await tester.pump(const Duration(milliseconds: 40));
+      final duringOpen = tester.getSize(field).height;
+      await tester.pumpAndSettle();
+      final openHeight = tester.getSize(field).height;
+      if (platform == TargetPlatform.android) {
+        expect(firstOpen, openHeight);
+        expect(duringOpen, openHeight);
+      } else {
+        expect(duringOpen, greaterThan(openHeight));
+        expect(duringOpen, lessThan(closedHeight));
+      }
+      expect(tester.getRect(find.text('登録')).bottom, lessThanOrEqualTo(520));
+      expect(controller.text, '変化中も入力を保つ\n2行目');
+      expect(controller.selection, const TextSelection.collapsed(offset: 3));
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      tester.view.viewInsets = const FakeViewPadding();
+      await tester.pump();
+      final firstClose = tester.getSize(field).height;
+      await tester.pump(const Duration(milliseconds: 40));
+      final duringClose = tester.getSize(field).height;
+      if (platform == TargetPlatform.android) {
+        expect(firstClose, closedHeight);
+        expect(duringClose, closedHeight);
+      } else {
+        expect(duringClose, greaterThan(openHeight));
+        expect(duringClose, lessThan(closedHeight));
+      }
+      await tester.pumpAndSettle();
+      expect(tester.getSize(field).height, closedHeight);
+      expect(controller.selection, const TextSelection.collapsed(offset: 3));
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant({platform}));
+  }
+
+  testWidgets('動きを減らす設定ではIME余白を補間せず適用する', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final repo = LocalRepository(MemoryDocumentStore());
+    await pumpReady(tester, repo);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    await tester.pump();
+    final firstHeight = tester.getSize(find.byType(TextField)).height;
+    expect(tester.getRect(find.text('登録')).bottom, lessThanOrEqualTo(520));
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(tester.getSize(find.byType(TextField)).height, firstHeight);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
+
+  for (final reducedMotion in [false, true]) {
+    testWidgets('ナビゲーション余白とIME開閉でも安全領域とcaretを保つ ($reducedMotion)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 24);
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures(disableAnimations: reducedMotion);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      addTearDown(tester.view.resetViewPadding);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final repo = LocalRepository(MemoryDocumentStore());
+      await pumpReady(tester, repo);
+      final field = find.byType(TextField);
+      await tester.enterText(field, List.filled(20, '匿名の入力').join('\n'));
+      await tester.pumpAndSettle();
+      final closedHeight = tester.getSize(field).height;
+      for (final keyboardOpen in [true, false]) {
+        tester.view.viewInsets = FakeViewPadding(
+          bottom: keyboardOpen ? 280 : 0,
+        );
+        tester.view.padding = FakeViewPadding(
+          top: 24,
+          bottom: keyboardOpen ? 0 : 24,
+        );
+        await tester.pumpAndSettle();
+        final editable = tester.state<EditableTextState>(
+          find.byType(EditableText),
+        );
+        final caret = editable.renderEditable.getLocalRectForCaret(
+          editable.widget.controller.selection.extent,
+        );
+        final global = editable.renderEditable.localToGlobal(caret.bottomRight);
+        expect(global.dy, lessThanOrEqualTo(keyboardOpen ? 520 : 776));
+        expect(global.dy, greaterThan(80));
+        expect(
+          tester.getRect(find.text('登録')).bottom,
+          lessThanOrEqualTo(keyboardOpen ? 520 : 776),
+        );
+        expect(tester.takeException(), isNull);
+      }
+      expect(tester.getSize(field).height, closedHeight);
+    });
+  }
+
+  testWidgets('長文入力中のIME連続変化・回転でcaretとscrollと保存を保つ', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final store = MemoryDocumentStore();
+    final repo = LocalRepository(store);
+    await repo.saveSettings(
+      const LifestyleSettings(initialSetupComplete: true),
+    );
+    await tester.pumpWidget(
+      testApp(
+        repo,
+        notificationPort: WidgetTestNotificationPort(allowed: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byType(TextField);
+    await tester.ensureVisible(field);
+    final input = List.generate(40, (index) => '匿名の長文 $index').join('\n');
+    await tester.enterText(field, input);
+    final controller = tester.widget<TextField>(field).controller!;
+    final selection = TextSelection.collapsed(offset: input.length);
+    controller.selection = selection;
+    for (final inset in [80.0, 160.0, 280.0, 160.0, 0.0]) {
+      tester.view.viewInsets = FakeViewPadding(bottom: inset);
+      await tester.pump();
+      final safeArea = find
+          .ancestor(of: field, matching: find.byType(SafeArea))
+          .first;
+      expect(tester.getRect(safeArea).bottom, 640 - inset);
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(tester.getRect(safeArea).bottom, 640 - inset);
+      expect(tester.takeException(), isNull);
+      expect(controller.text, input);
+      expect(controller.selection, selection);
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+    }
+    tester.view.physicalSize = const Size(640, 320);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 120);
+    await tester.pumpAndSettle();
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(editable.renderEditable.offset.pixels, greaterThan(0));
+    final caret = editable.renderEditable.getLocalRectForCaret(
+      selection.extent,
+    );
+    expect(caret.top, greaterThanOrEqualTo(0));
+    expect(
+      caret.bottom,
+      lessThanOrEqualTo(editable.renderEditable.size.height),
+    );
+    expect(
+      editable.renderEditable.localToGlobal(caret.bottomRight).dy,
+      lessThanOrEqualTo(200),
+    );
+    await tester.ensureVisible(find.text('登録'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect(
+      (await LocalRepository(store).allItems()).single.originalText,
+      input,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('拒否案内とキーボードでも入力欄の文字を表示できる高さを保つ', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
