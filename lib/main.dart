@@ -442,7 +442,11 @@ class _HomeInputScreenState extends State<HomeInputScreen>
       ),
       body: AnimatedPadding(
         onEnd: _revealInputCaret,
-        duration: MediaQuery.disableAnimationsOf(context)
+        // Android IME insets are already supplied by the platform. Do not add
+        // a second timed transition; retain onEnd for post-layout caret reveal.
+        duration:
+            Theme.of(context).platform == TargetPlatform.android ||
+                MediaQuery.disableAnimationsOf(context)
             ? Duration.zero
             : const Duration(milliseconds: 120),
         curve: Curves.easeOut,

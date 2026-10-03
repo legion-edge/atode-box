@@ -83,42 +83,56 @@ void main() {
     messenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
-  testWidgets('IMEの出入りで入力欄を短く補間し、入力と選択を保つ', (tester) async {
-    tester.view.physicalSize = const Size(400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetViewInsets);
-    final repo = LocalRepository(MemoryDocumentStore());
-    await pumpReady(tester, repo);
-    final field = find.byType(TextField);
-    await tester.enterText(field, '変化中も入力を保つ\n2行目');
-    final controller = tester.widget<TextField>(field).controller!;
-    controller.selection = const TextSelection.collapsed(offset: 3);
-    final closedHeight = tester.getSize(field).height;
-    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-    final duringOpen = tester.getSize(field).height;
-    await tester.pumpAndSettle();
-    final openHeight = tester.getSize(field).height;
-    expect(duringOpen, greaterThan(openHeight));
-    expect(duringOpen, lessThan(closedHeight));
-    expect(tester.getRect(find.text('登録')).bottom, lessThanOrEqualTo(520));
-    expect(controller.text, '変化中も入力を保つ\n2行目');
-    expect(controller.selection, const TextSelection.collapsed(offset: 3));
-    expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
-    tester.view.viewInsets = const FakeViewPadding();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 40));
-    final duringClose = tester.getSize(field).height;
-    expect(duringClose, greaterThan(openHeight));
-    expect(duringClose, lessThan(closedHeight));
-    await tester.pumpAndSettle();
-    expect(tester.getSize(field).height, closedHeight);
-    expect(controller.selection, const TextSelection.collapsed(offset: 3));
-    expect(tester.takeException(), isNull);
-  });
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets('IME余白はAndroidで即反映し、iOSは短い補間を保つ ($platform)', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      final repo = LocalRepository(MemoryDocumentStore());
+      await pumpReady(tester, repo);
+      final field = find.byType(TextField);
+      await tester.enterText(field, '変化中も入力を保つ\n2行目');
+      final controller = tester.widget<TextField>(field).controller!;
+      controller.selection = const TextSelection.collapsed(offset: 3);
+      final closedHeight = tester.getSize(field).height;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      await tester.pump();
+      final firstOpen = tester.getSize(field).height;
+      await tester.pump(const Duration(milliseconds: 40));
+      final duringOpen = tester.getSize(field).height;
+      await tester.pumpAndSettle();
+      final openHeight = tester.getSize(field).height;
+      if (platform == TargetPlatform.android) {
+        expect(firstOpen, openHeight);
+        expect(duringOpen, openHeight);
+      } else {
+        expect(duringOpen, greaterThan(openHeight));
+        expect(duringOpen, lessThan(closedHeight));
+      }
+      expect(tester.getRect(find.text('登録')).bottom, lessThanOrEqualTo(520));
+      expect(controller.text, '変化中も入力を保つ\n2行目');
+      expect(controller.selection, const TextSelection.collapsed(offset: 3));
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      tester.view.viewInsets = const FakeViewPadding();
+      await tester.pump();
+      final firstClose = tester.getSize(field).height;
+      await tester.pump(const Duration(milliseconds: 40));
+      final duringClose = tester.getSize(field).height;
+      if (platform == TargetPlatform.android) {
+        expect(firstClose, closedHeight);
+        expect(duringClose, closedHeight);
+      } else {
+        expect(duringClose, greaterThan(openHeight));
+        expect(duringClose, lessThan(closedHeight));
+      }
+      await tester.pumpAndSettle();
+      expect(tester.getSize(field).height, closedHeight);
+      expect(controller.selection, const TextSelection.collapsed(offset: 3));
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant({platform}));
+  }
 
   testWidgets('動きを減らす設定ではIME余白を補間せず適用する', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
@@ -138,7 +152,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 40));
     expect(tester.getSize(find.byType(TextField)).height, firstHeight);
     expect(tester.takeException(), isNull);
-  });
+  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
 
   for (final reducedMotion in [false, true]) {
     testWidgets('ナビゲーション余白とIME開閉でも安全領域とcaretを保つ ($reducedMotion)', (
@@ -222,7 +236,12 @@ void main() {
     for (final inset in [80.0, 160.0, 280.0, 160.0, 0.0]) {
       tester.view.viewInsets = FakeViewPadding(bottom: inset);
       await tester.pump();
+      final safeArea = find
+          .ancestor(of: field, matching: find.byType(SafeArea))
+          .first;
+      expect(tester.getRect(safeArea).bottom, 640 - inset);
       await tester.pump(const Duration(milliseconds: 40));
+      expect(tester.getRect(safeArea).bottom, 640 - inset);
       expect(tester.takeException(), isNull);
       expect(controller.text, input);
       expect(controller.selection, selection);
