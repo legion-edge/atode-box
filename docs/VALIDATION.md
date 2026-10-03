@@ -6,7 +6,9 @@
 
 Windowsの英数字パスで `flutter analyze` は問題なし、`flutter test --reporter expanded` は77件すべて成功した。新規テストはURLあり／なし・起動失敗、編集・URL除去・不正URL・保存失敗後の再試行、削除の確認／取消／保存失敗、保存データの再読込、あとで段階・完了状態の保全を含む。fake通知ポートで同時刻のカテゴリ変更と取消失敗後の再試行、通知操作途中に編集・再計算・削除が入った場合の最新状態の保全を検証した。既存の未配信予約保持・64件枠の回帰テストも成功した。
 
-独立レビューで指摘された通知操作の古いsnapshotによる編集上書きを、repository直列処理内での最新状態と予定時刻の照合で修正した。同時刻カテゴリ変更の通知文面更新は、永続予約のpayload・タイトル・本文を通常同期で照合する方式にした。Android debug buildと最終再レビューは後段で記録する。
+独立レビューで指摘された通知操作の古いsnapshotによる編集上書きを、repository直列処理内での最新状態と予定時刻の照合で修正した。同時刻カテゴリ変更の通知文面更新は、永続予約のpayload・タイトル・本文を通常同期で照合する方式にした。最終read-only再レビューで両指摘の解消を確認し、新たな重大指摘はなかった。
+
+確定commit `be86c99` の英数字パスの隔離cloneと新しい専用Gradleキャッシュで `flutter build apk --debug --target-platform android-arm64` が成功した（172.9秒）。コピーだけにファイル監視無効を適用し、application IDや製品のビルド設定は変更していない。APKは80,400,457 bytes、SHA-256 `1F9DA6BAFDDEF57AE250B335BDFBB1DF5CE9685B0E4AD87E0E8194FBA5CBFDE2`。APK・生ログはリポジトリ外に保存した。最終文書追記commitは製品コードが同一である。
 
 この検証はwidget・fake通知ポートと保存処理の自動テストであり、Android/iPhone実機の外部URL遷移・編集／削除とOS予約の照合ではない。既存Galaxyの10月4日21:00の予約を保全し、この変更のAPK導入、端末操作、権限・保存item・予約変更は実施していない。WindowsでiOSローカルbuildは未実施。
 
