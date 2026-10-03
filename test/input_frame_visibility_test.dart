@@ -75,7 +75,18 @@ void main() {
           }
 
           final insets = scenario.size.height > 800
-              ? [358.4, 384.0, 400.0, 384.0, 0.0, 400.0, 0.0]
+              ? [
+                  358.4,
+                  384.0,
+                  400.0,
+                  450.0,
+                  500.0,
+                  600.0,
+                  384.0,
+                  0.0,
+                  400.0,
+                  0.0,
+                ]
               : [80.0, scenario.size.height * 0.4, 80.0, 0.0];
           for (final inset in insets) {
             tester.view.viewInsets = FakeViewPadding(bottom: inset);
@@ -105,7 +116,10 @@ void main() {
               focus.requestFocus();
               await tester.pumpAndSettle();
               expect(controller.selection, selection);
-              expect(page.position.pixels, closeTo(offset, 0.001));
+              if (height <=
+                  tester.getSize(find.byType(SingleChildScrollView)).height) {
+                expect(page.position.pixels, closeTo(offset, 0.001));
+              }
               expectVisible();
             }
           }

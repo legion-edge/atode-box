@@ -494,11 +494,7 @@ class _HomeInputScreenState extends State<HomeInputScreen>
                   const SizedBox(height: 20),
                   if (_notificationsAllowed == false) ...[
                     const Text('通知はオフです。保存はそのまま使えます。'),
-                    TextButton(
-                      onPressed: _requestNotificationPermission,
-                      child: const Text('通知を許可する'),
-                    ),
-                    const Text('一度拒否した場合は、端末の設定で「あとでボックス」の通知をオンにしてください。'),
+                    const SizedBox(height: 8),
                   ],
                   if (_notificationError != null) Text(_notificationError!),
                   SizedBox(
@@ -540,6 +536,14 @@ class _HomeInputScreenState extends State<HomeInputScreen>
                     icon: const Icon(Icons.content_paste),
                     label: const Text('貼り付けて追加'),
                   ),
+                  if (_notificationsAllowed == false) ...[
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: _requestNotificationPermission,
+                      child: const Text('通知を許可する'),
+                    ),
+                    const Text('一度拒否した場合は、端末の設定で「あとでボックス」の通知をオンにしてください。'),
+                  ],
                 ],
               ),
             ),
