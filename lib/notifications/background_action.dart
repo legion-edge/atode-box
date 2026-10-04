@@ -101,6 +101,15 @@ class NotificationActionRecord {
   final int generation;
   final String incarnation;
   final String epoch;
+
+  bool matches(NotificationActionToken token) =>
+      item.status == ItemStatus.active &&
+      item.id == token.itemId &&
+      item.notificationId == token.notificationId &&
+      item.nextNotifyAt?.isAtSameMomentAs(token.at) == true &&
+      generation == token.generation &&
+      incarnation == token.incarnation &&
+      epoch == token.epoch;
 }
 
 class NotificationActionSnapshot {
@@ -124,17 +133,8 @@ NotificationActionRecord? reduceBackgroundAction({
   required DateTime now,
 }) {
   final previous = snapshot.record;
-  if (previous == null) return null;
+  if (previous == null || !previous.matches(token)) return null;
   final item = previous.item;
-  if (item.id != token.itemId ||
-      item.notificationId != token.notificationId ||
-      item.status != ItemStatus.active ||
-      item.nextNotifyAt?.isAtSameMomentAs(token.at) != true ||
-      previous.generation != token.generation ||
-      previous.incarnation != token.incarnation ||
-      previous.epoch != token.epoch) {
-    return null;
-  }
   final InboxItem updated;
   switch (action) {
     case BackgroundAction.complete:

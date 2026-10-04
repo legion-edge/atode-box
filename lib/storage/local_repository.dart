@@ -148,11 +148,14 @@ class LocalRepository {
       }
       items[item.id] = item;
     }
-    _items = items;
-    _settings = LifestyleSettings.fromJson(
+    final settings = LifestyleSettings.fromJson(
       root['settings'] as Map<String, dynamic>? ?? {},
     );
-    _scheduleZone = root['schedule_zone'] as String?;
+    final scheduleZone = root['schedule_zone'] as String?;
+    // Invalid settings must not publish a partially loaded item cache.
+    _items = items;
+    _settings = settings;
+    _scheduleZone = scheduleZone;
   }
 
   Future<void> _persist(
