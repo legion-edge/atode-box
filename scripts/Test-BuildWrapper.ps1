@@ -1,4 +1,4 @@
-# Exercise the public wrapper with a failing fake tool; never build the application.
+﻿# Exercise the public wrapper with a failing fake tool; never build the application.
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $fixture = Join-Path $env:TEMP ('build-wrapper-test-' + [Guid]::NewGuid().ToString('N'))
@@ -9,7 +9,7 @@ $oldTarget = $env:CARGO_TARGET_DIR
 $oldBuild = $env:CARGO_BUILD_BUILD_DIR
 $oldGradle = $env:GRADLE_USER_HOME
 $wrapper = Join-Path $repo 'apps\desktop\scripts\Invoke-LocalBuild.ps1'
-$parameters = @{TaskId='native-failure';ReasonCode='ExistingTask';StateDirectory=(Join-Path $fixture 'state');ExpectedPeakGB=0;ReserveGB=0}
+$parameters = @{TaskId='native-failure';ReasonCode='ExistingTask';StateDirectory=(Join-Path $fixture 'state');ExpectedPeakGB=0;ReserveGB=0;ConcurrentPeakGB=0}
 try {
     if (Test-Path -LiteralPath $wrapper) {
         [IO.File]::WriteAllText((Join-Path $bin 'npm.cmd'),"@exit /b 7`r`n",[Text.Encoding]::ASCII)

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$TaskId,
     [Parameter(Mandatory=$true)][ValidateSet('ExistingTask','NewTask','IsolatedValidation','Recovery')][string]$ReasonCode,
@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{40}$')][string]$ExpectedCommit,
     [ValidateRange(0,10000)][double]$ExpectedPeakGB = 8,
     [ValidateRange(0,10000)][double]$ReserveGB = 30,
+    [Parameter(Mandatory=$true)][ValidateRange(0,10000)][double]$ConcurrentPeakGB,
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -23,4 +24,4 @@ $action = {
     flutter.bat build apk --debug --target-platform android-arm64
     if ($LASTEXITCODE -ne 0) { throw 'Flutter Android build failed.' }
 }.GetNewClosure()
-Invoke-GuardedBuild -Repository $repository -BuildDirectory $build -StateDirectory $StateDirectory -CacheDirectory $GradleUserHome -TaskId $TaskId -ReasonCode $ReasonCode -BuildAction $action -Artifacts @(Join-Path $build 'app\outputs\flutter-apk\app-debug.apk') -CleanupDirectories @($build) -ExpectedPeakGB $ExpectedPeakGB -ReserveGB $ReserveGB -NewHeavyIsolated:($ReasonCode -ne 'ExistingTask') -DryRun:$DryRun
+Invoke-GuardedBuild -Repository $repository -BuildDirectory $build -StateDirectory $StateDirectory -CacheDirectory $GradleUserHome -TaskId $TaskId -ReasonCode $ReasonCode -BuildAction $action -Artifacts @(Join-Path $build 'app\outputs\flutter-apk\app-debug.apk') -CleanupDirectories @($build) -ExpectedPeakGB $ExpectedPeakGB -ReserveGB $ReserveGB -ConcurrentPeakGB $ConcurrentPeakGB -NewHeavyIsolated:($ReasonCode -ne 'ExistingTask') -DryRun:$DryRun

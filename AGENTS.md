@@ -28,10 +28,11 @@
 
 ## Windowsローカルビルドの容量・保全
 
-- 大型ローカルビルドの前に [容量管理手順](docs/LOCAL_BUILD_STORAGE.md) のwrapperを `-DryRun` で確認する。空き100 GB未満は警告、新規大型隔離ビルドは60 GB未満または予定増加ピーク＋録画/OS余裕不足で保留する。進行中処理を停止しない。
+- 大型ローカルビルドの前に [容量管理手順](docs/LOCAL_BUILD_STORAGE.md) のwrapperを `-DryRun` で確認する。空き100 GB未満は警告、全task（既存も含む）は予定増加と明示したConcurrentPeakGBを差し引いた残量が60 GiB（64,424,509,440 bytes）またはReserveGBを下回れば保留する。GB引数は10^9 bytes、ReserveGBは消費後の希望残量。別repoビルド・録画・予測OS増分を並行予算に合算する。進行中処理を停止しない。
 - 同じrepoの全taskは同じ利用者専用ローカルStateDirectoryを使う。新しいbuild/cache領域はtask・確認済みcommit・列挙した新設理由を記録する。state変更で排他・上限を回避しない。
 - wrapperは同一stateのビルドを逐次化し、成果物をSHA-256付きで保全する。manifest最大64 task、成果物最大8/task。上限・不完全コピー・未完了cacheでは所有者レビュー待ちとし、未記録の領域を増やして回避しない。
 - task完了時は所有者が参照・再試験予定・比較exe/APK/PDB/証拠の保全を確認し、正確なパスとサイズの整理候補を本人へ報告する。候補の出力は削除承認ではない。承認時点で境界・リンク・参照・保全SHAを再確認する。
+- 保持日数は削除期限にせず分類別のレビュー時期として本人へ提案する。未回答の値や自動実行範囲を確定扱いしない。退避後も全件のsize/SHA照合・最新の元size/mtime・非参照・別の原本削除承認が必要。過去完了pathを再処理しない。
 - 自動削除、日数だけの削除、NAS送信、daemon停止、OS設定変更はwrapperに含めない。元repo・source・Git・未commit退避・現在のtrial・ユーザー動画は保全する。NAS退避はコピー許可・SHA照合・原本削除承認を分ける。
 
 ## iOS検証環境

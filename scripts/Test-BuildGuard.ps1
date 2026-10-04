@@ -1,4 +1,4 @@
-# Self-contained tests: no npm/Cargo/Flutter build, daemon control, network, or cleanup.
+﻿# Self-contained tests: no npm/Cargo/Flutter build, daemon control, network, or cleanup.
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'BuildGuard.psm1') -Force
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -14,7 +14,7 @@ function Must-Fail([scriptblock]$Body,[string]$Label) {
     try { & $Body | Out-Null } catch { $failed = $true }
     Check $failed $Label
 }
-$common = @{Repository=$repo;BuildDirectory=$build;StateDirectory=$state;TaskId='fixture';ReasonCode='IsolatedValidation';ExpectedPeakGB=1;ReserveGB=1;NewHeavyIsolated=$true;FreeBytesProvider={param($root) 200e9};BuildAction={$script:calls++}}
+$common = @{Repository=$repo;BuildDirectory=$build;StateDirectory=$state;TaskId='fixture';ReasonCode='IsolatedValidation';ExpectedPeakGB=1;ReserveGB=1;ConcurrentPeakGB=0;NewHeavyIsolated=$true;FreeBytesProvider={param($root) 200e9};BuildAction={$script:calls++}}
 $plan = Invoke-GuardedBuild @common -DryRun
 Check ($plan.status -eq 'dry-run' -and $calls -eq 0 -and !(Test-Path $fixture\state)) 'DryRun has no writes or build invocation'
 $low = $common.Clone(); $low.FreeBytesProvider = {param($root) 59e9}
@@ -127,5 +127,43 @@ Import-Module (Join-Path $PSScriptRoot 'BuildGuard.psm1') -Force
 Microsoft.PowerShell.Management\Set-Location -LiteralPath $startingLocation
 Invoke-GuardedBuild @restoreFailure | Out-Null
 Check ($true) 'locks released even when location restoration fails'
+# Regression tests for the owner-required 60 GiB floor, even on existing tasks.
+$floor = [long](60 * 1GB)
+$existingLow = $common.Clone(); $existingLow.ReasonCode='ExistingTask'; $existingLow.NewHeavyIsolated=$false; $existingLow.ExpectedPeakGB=0; $existingLow.ReserveGB=0
+$existingLow.FreeBytesProvider={param($root) 59e9}
+Must-Fail { Invoke-GuardedBuild @existingLow -DryRun } 'existing tasks cannot bypass low-space floor'
+$existingLow.FreeBytesProvider={param($root) 60e9}
+Must-Fail { Invoke-GuardedBuild @existingLow -DryRun } '60 decimal GB is below 60 GiB'
+$boundary=$existingLow.Clone(); $boundary.FreeBytesProvider={param($root) $floor}.GetNewClosure()
+$boundaryPlan=Invoke-GuardedBuild @boundary -DryRun
+Check ($boundaryPlan.space[0].projectedRemainingBytes -eq $floor) 'exact 60 GiB boundary allowed with zero declared consumption'
+$below=$boundary.Clone(); $below.FreeBytesProvider={param($root) ($floor-1)}.GetNewClosure()
+Must-Fail { Invoke-GuardedBuild @below -DryRun } 'one byte below fixed floor held'
+$projected=$boundary.Clone(); $projected.ExpectedPeakGB=5; $projected.FreeBytesProvider={param($root) ($floor+5e9-1)}.GetNewClosure()
+Must-Fail { Invoke-GuardedBuild @projected -DryRun } 'peak consumption cannot cross fixed floor'
+$projected.FreeBytesProvider={param($root) ($floor+5e9)}.GetNewClosure()
+$projectedPlan=Invoke-GuardedBuild @projected -DryRun
+Check ($projectedPlan.space[0].projectedRemainingBytes -eq $floor) 'peak budget preserves floor at exact boundary'
+$parallel=$projected.Clone(); $parallel.ConcurrentPeakGB=0.1
+Must-Fail { Invoke-GuardedBuild @parallel -DryRun } 'declared parallel growth prevents oversubscription'
+$parallel=$common.Clone(); $parallel.ConcurrentPeakGB=8
+$parallelPlan=Invoke-GuardedBuild @parallel -DryRun
+Check ($parallelPlan.budget.concurrentPeakGB -eq 8 -and $parallelPlan.budget.minimumRemainingGiB -eq 60) 'DryRun records declared parallel budget and fixed floor'
+$highReserve=$boundary.Clone(); $highReserve.ReserveGB=70
+Must-Fail { Invoke-GuardedBuild @highReserve -DryRun } 'reserve larger than floor remains enforced'
+$post=$common.Clone(); $post.StateDirectory=Join-Path $fixture 'post-build-low'
+$postCounter=[pscustomobject]@{calls=0}
+$post.FreeBytesProvider={param($root) $postCounter.calls++; if($postCounter.calls -le 2){200e9}else{$floor-1}}.GetNewClosure()
+Must-Fail { Invoke-GuardedBuild @post } 'unexpected consumption after build cannot claim success'
+$postManifest=Get-Content -LiteralPath (Join-Path $post.StateDirectory 'fixture.json') -Raw | ConvertFrom-Json
+Check ($postManifest.status -eq 'failed' -and $postManifest.cleanupCandidates.Count -eq 0) 'post-build low space preserves evidence without cleanup candidates'
+$copyLow=$success.Clone(); $copyLow.StateDirectory=Join-Path $fixture 'copy-low'
+$copyCounter=[pscustomobject]@{calls=0}
+$copyLow.FreeBytesProvider={param($root) $copyCounter.calls++; if($copyCounter.calls -le 3){200e9}else{$floor+1}}.GetNewClosure()
+Must-Fail { Invoke-GuardedBuild @copyLow } 'artifact preservation cannot cross fixed floor'
+$copyManifest=Get-Content -LiteralPath (Join-Path $copyLow.StateDirectory 'fixture.json') -Raw | ConvertFrom-Json
+Check ($copyManifest.status -eq 'failed' -and $copyManifest.retainedArtifacts.Count -eq 0 -and (Get-Item -LiteralPath $artifact).Length -eq 4) 'copy refusal preserves original and creates no partial reservation'
+Check ($manifest.budget.minimumRemainingGiB -eq 60 -and $manifest.retentionPolicy -eq 'owner-review-no-auto-delete') 'manifest persists floor and non-deleting retention policy'
+Check ($manifest.cleanupCandidates[0].category -eq 'regenerable-build-output' -and $manifest.cleanupCandidates[0].approvalRequired) 'classified candidates still require explicit approval'
 # Fixture files intentionally remain for inspection; no deletion routine is part of this test.
 Write-Output "PASS $passed checks; fixture: $fixture; generated output: $build"

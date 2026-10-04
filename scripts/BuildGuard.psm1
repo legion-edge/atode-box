@@ -1,4 +1,4 @@
-# Local Windows build guard. No cleanup, daemon control, networking, or global settings.
+﻿# Local Windows build guard. No cleanup, daemon control, networking, or global settings.
 Set-StrictMode -Version 2
 
 function Assert-GuardLocalPath {
@@ -27,11 +27,15 @@ function Get-GuardPathKey {
 }
 
 function Assert-GuardSpace {
-    param([string[]]$Roots,[scriptblock]$Provider,[double]$PeakGB,[double]$ReserveGB,[bool]$NewHeavy)
+    param([string[]]$Roots,[scriptblock]$Provider,[double]$PeakGB,[double]$ReserveGB,[double]$ConcurrentPeakGB)
+    # GB inputs are decimal; the fixed post-consumption floor is 60 GiB, for EVERY task.
+    $plannedBytes = [long][Math]::Ceiling(($PeakGB + $ConcurrentPeakGB) * 1e9)
+    $remainingBytes = [long][Math]::Max((60 * 1GB), [Math]::Ceiling($ReserveGB * 1e9))
     foreach ($root in ($Roots | Select-Object -Unique)) {
         $free = [long](& $Provider $root)
         if ($free -lt 100e9) { Write-Warning 'Less than 100 GB free; review the planned build and recording budget.' }
-        if (($NewHeavy -and $free -lt 60e9) -or $free -lt (($PeakGB + $ReserveGB) * 1e9)) { throw 'Build held: insufficient free space for the declared peak and reserve.' }
+        if ($free -lt ($plannedBytes + $remainingBytes)) { throw 'Build held: declared build/concurrent peaks would leave less than 60 GiB or the requested reserve.' }
+        [pscustomobject]@{root=$root;freeBytes=$free;projectedRemainingBytes=($free - $plannedBytes);requiredRemainingBytes=$remainingBytes;observedUtc=[DateTime]::UtcNow.ToString('o')}
     }
 }
 
@@ -59,7 +63,7 @@ function Get-GuardState {
                 if ($artifact.status -ne 'verified') { throw 'An incomplete artifact requires owner review; no overwrite or retry.' }
                 $p = Assert-GuardLocalPath $artifact.path
                 if (!$p.StartsWith((Join-Path $State ('artifacts\' + $Task)) + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe retained artifact path.' }
-                if (!(Test-Path -LiteralPath $p -PathType Leaf) -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw 'Previously retained artifact is missing or changed.' }
+                if (!(Test-Path -LiteralPath $p -PathType Leaf) -or (Get-Item -LiteralPath $p -Force).Length -ne $artifact.bytes -or (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw 'Previously retained artifact is missing or changed.' }
             }
         }
     }
@@ -87,7 +91,7 @@ function Copy-GuardArtifact {
     $sourceStream = [IO.File]::Open($Source,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
     try {
         $output = [IO.File]::Open($Destination,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
-        try { $sourceStream.CopyTo($output); $output.Flush() } finally { $output.Dispose() }
+        try { $sourceStream.CopyTo($output); $output.Flush($true) } finally { $output.Dispose() }
     } finally { $sourceStream.Dispose() }
 }
 
@@ -105,6 +109,7 @@ function Invoke-GuardedBuild {
         [string[]]$CleanupDirectories = @(),
         [ValidateRange(0,10000)][double]$ExpectedPeakGB = 25,
         [ValidateRange(0,10000)][double]$ReserveGB = 30,
+        [Parameter(Mandatory=$true)][ValidateRange(0,10000)][double]$ConcurrentPeakGB,
         [switch]$NewHeavyIsolated,
         [switch]$DryRun,
         [scriptblock]$FreeBytesProvider = { param($root) ([IO.DriveInfo]::new($root)).AvailableFreeSpace }
@@ -136,7 +141,7 @@ function Invoke-GuardedBuild {
     }
     $roots = @([IO.Path]::GetPathRoot($build),[IO.Path]::GetPathRoot($state))
     if ($cache) { $roots += [IO.Path]::GetPathRoot($cache) }
-    Assert-GuardSpace $roots $FreeBytesProvider $ExpectedPeakGB $ReserveGB ([bool]$NewHeavyIsolated)
+    $space = @(Assert-GuardSpace $roots $FreeBytesProvider $ExpectedPeakGB $ReserveGB $ConcurrentPeakGB)
     $head = @(& git -C $repo rev-parse --verify HEAD)
     if ($LASTEXITCODE -ne 0 -or $head.Count -ne 1 -or $head[0] -notmatch '^[a-f0-9]{40}$') { throw 'Cannot verify repository HEAD.' }
     $changes = @(& git -C $repo status --porcelain --untracked-files=all)
@@ -148,7 +153,7 @@ function Invoke-GuardedBuild {
     if (Test-Path -LiteralPath ($manifestPath + '.pending')) { throw 'Pending manifest requires owner review.' }
     $prior = Get-GuardState $state $manifestPath $TaskId $repo $build $cache
     if ($DryRun) {
-        return [pscustomobject]@{status='dry-run';taskId=$TaskId;reasonCode=$ReasonCode;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;manifest=$manifestPath;cleanupExecuted=$false}
+        return [pscustomobject]@{status='dry-run';taskId=$TaskId;reasonCode=$ReasonCode;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;manifest=$manifestPath;cleanupExecuted=$false;budget=@{expectedPeakGB=$ExpectedPeakGB;concurrentPeakGB=$ConcurrentPeakGB;reserveGB=$ReserveGB;minimumRemainingGiB=60};space=$space}
     }
     New-Item -ItemType Directory -Path $state -Force | Out-Null
     $locks = @()
@@ -159,7 +164,7 @@ function Invoke-GuardedBuild {
         # Sorted resource keys avoid deadlocks. Persistent lock files are never deleted.
         $capacityPath = Assert-GuardLocalPath (Join-Path $state 'capacity.lock')
         $locks += [IO.File]::Open($capacityPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
-        Assert-GuardSpace $roots $FreeBytesProvider $ExpectedPeakGB $ReserveGB ([bool]$NewHeavyIsolated)
+        $space = @(Assert-GuardSpace $roots $FreeBytesProvider $ExpectedPeakGB $ReserveGB $ConcurrentPeakGB)
         $prior = Get-GuardState $state $manifestPath $TaskId $repo $build $cache
         $keys = @(('manifest-' + (Get-GuardPathKey $manifestPath)), ('build-' + (Get-GuardPathKey $build)))
         if ($cache) { $keys += 'cache-' + (Get-GuardPathKey $cache) }
@@ -168,11 +173,12 @@ function Invoke-GuardedBuild {
             $locks += [IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         }
         $retained = @($prior.retained)
-        $manifest = [ordered]@{schemaVersion=1;taskId=$TaskId;reasonCode=$ReasonCode;repository=$repo;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=$null;status='running';retainedArtifacts=$retained;cleanupCandidates=@();cleanupExecuted=$false}
+        $manifest = [ordered]@{schemaVersion=1;taskId=$TaskId;reasonCode=$ReasonCode;repository=$repo;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=$null;status='running';retainedArtifacts=$retained;cleanupCandidates=@();cleanupExecuted=$false;budget=@{expectedPeakGB=$ExpectedPeakGB;concurrentPeakGB=$ConcurrentPeakGB;reserveGB=$ReserveGB;minimumRemainingGiB=60};spaceBeforeBuild=$space;spaceAfterBuild=@();retentionPolicy='owner-review-no-auto-delete'}
         Write-GuardManifest $manifestPath $manifest
         if ($cache) { $env:GRADLE_USER_HOME = $cache }
         Set-Location -LiteralPath $repo
         & $BuildAction | Out-Host
+        $manifest.spaceAfterBuild = @(Assert-GuardSpace $roots $FreeBytesProvider 0 $ReserveGB $ConcurrentPeakGB)
         foreach ($a in ($artifactPaths | Select-Object -Unique)) {
             Assert-GuardLocalPath $a | Out-Null
             $info = Get-Item -LiteralPath $a -Force
@@ -185,17 +191,17 @@ function Invoke-GuardedBuild {
             $existing = @($retained | Where-Object { $_.path -eq $destination })
             if (!$existing.Count) {
                 if ($retained.Count -ge 8) { throw 'Artifact capacity reached (8/task); request an archive review.' }
-                Assert-GuardSpace @([IO.Path]::GetPathRoot($state)) $FreeBytesProvider ($info.Length / 1e9) $ReserveGB $false
+                $null = @(Assert-GuardSpace @([IO.Path]::GetPathRoot($state)) $FreeBytesProvider ($info.Length / 1e9) $ReserveGB $ConcurrentPeakGB)
                 $reservation = [pscustomobject]@{path=$destination;sha256=$digest;bytes=$info.Length;commit=$head[0];workingTreeDirty=$dirty;status='pending'}
                 $retained += $reservation
                 $manifest.retainedArtifacts = $retained
                 Write-GuardManifest $manifestPath $manifest
                 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($destination)) -Force | Out-Null
                 if (Test-Path -LiteralPath $destination) {
-                    if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $digest) { throw 'Artifact collision; no overwrite.' }
+                    if ((Get-Item -LiteralPath $destination -Force).Length -ne $info.Length -or (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $digest) { throw 'Artifact collision; no overwrite.' }
                 } else {
                     Copy-GuardArtifact $a $destination
-                    if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $digest) { throw 'Artifact verification failed; original retained.' }
+                    if ((Get-Item -LiteralPath $destination -Force).Length -ne $info.Length -or (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $digest) { throw 'Artifact verification failed; original retained.' }
                 }
                 $reservation.status = 'verified'
                 # Record each verified copy so a later failure cannot orphan successful copies.
@@ -204,7 +210,7 @@ function Invoke-GuardedBuild {
             }
         }
         $manifest.status = 'succeeded'
-        $manifest.cleanupCandidates = @($candidatePaths | ForEach-Object { [pscustomobject]@{path=$_;ownerConfirmationRequired=$true;approvalRequired=$true;retainedArtifactsVerified=$true;boundaryReviewRequired=$true} })
+        $manifest.cleanupCandidates = @($candidatePaths | ForEach-Object { [pscustomobject]@{path=$_;category='regenerable-build-output';retentionRule='owner-review-no-age-based-deletion';ownerConfirmationRequired=$true;approvalRequired=$true;retainedArtifactsVerified=$true;boundaryReviewRequired=$true} })
         return [pscustomobject]@{status='succeeded';manifest=$manifestPath;cleanupExecuted=$false}
     } catch {
         if ($manifest) { $manifest.status = 'failed'; $manifest.cleanupCandidates = @() }
