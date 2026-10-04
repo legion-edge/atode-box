@@ -157,6 +157,7 @@ $post.FreeBytesProvider={param($root) $postCounter.calls++; if($postCounter.call
 Must-Fail { Invoke-GuardedBuild @post } 'unexpected consumption after build cannot claim success'
 $postManifest=Get-Content -LiteralPath (Join-Path $post.StateDirectory 'fixture.json') -Raw | ConvertFrom-Json
 Check ($postManifest.status -eq 'failed' -and $postManifest.cleanupCandidates.Count -eq 0) 'post-build low space preserves evidence without cleanup candidates'
+Check ($postManifest.spaceAfterBuild[0].freeBytes -eq ($floor-1)) 'failed post-build measurement remains in audit manifest'
 $copyLow=$success.Clone(); $copyLow.StateDirectory=Join-Path $fixture 'copy-low'
 $copyCounter=[pscustomobject]@{calls=0}
 $copyLow.FreeBytesProvider={param($root) $copyCounter.calls++; if($copyCounter.calls -le 3){200e9}else{$floor+1}}.GetNewClosure()
@@ -165,5 +166,12 @@ $copyManifest=Get-Content -LiteralPath (Join-Path $copyLow.StateDirectory 'fixtu
 Check ($copyManifest.status -eq 'failed' -and $copyManifest.retainedArtifacts.Count -eq 0 -and (Get-Item -LiteralPath $artifact).Length -eq 4) 'copy refusal preserves original and creates no partial reservation'
 Check ($manifest.budget.minimumRemainingGiB -eq 60 -and $manifest.retentionPolicy -eq 'owner-review-no-auto-delete') 'manifest persists floor and non-deleting retention policy'
 Check ($manifest.cleanupCandidates[0].category -eq 'regenerable-build-output' -and $manifest.cleanupCandidates[0].approvalRequired) 'classified candidates still require explicit approval'
+$finalLow=$success.Clone(); $finalLow.StateDirectory=Join-Path $fixture 'final-low'
+$finalCounter=[pscustomobject]@{calls=0}
+$finalLow.FreeBytesProvider={param($root) $finalCounter.calls++; if($finalCounter.calls -le 4){200e9}else{$floor-1}}.GetNewClosure()
+Must-Fail { Invoke-GuardedBuild @finalLow } 'last preservation phase cannot claim success below floor'
+$finalManifest=Get-Content -LiteralPath (Join-Path $finalLow.StateDirectory 'fixture.json') -Raw | ConvertFrom-Json
+Check ($finalManifest.status -eq 'failed' -and $finalManifest.cleanupCandidates.Count -eq 0 -and $finalManifest.retainedArtifacts[0].status -eq 'verified') 'final low-space failure preserves already verified artifact and withholds cleanup candidates'
+Check ($finalManifest.spaceAfterPreservation[0].freeBytes -eq ($floor-1)) 'failed final measurement recorded for owner audit'
 # Fixture files intentionally remain for inspection; no deletion routine is part of this test.
 Write-Output "PASS $passed checks; fixture: $fixture; generated output: $build"

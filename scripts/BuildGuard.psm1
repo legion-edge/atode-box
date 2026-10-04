@@ -27,15 +27,17 @@ function Get-GuardPathKey {
 }
 
 function Assert-GuardSpace {
-    param([string[]]$Roots,[scriptblock]$Provider,[double]$PeakGB,[double]$ReserveGB,[double]$ConcurrentPeakGB)
+    param([string[]]$Roots,[scriptblock]$Provider,[double]$PeakGB,[double]$ReserveGB,[double]$ConcurrentPeakGB,[Collections.IList]$Observations)
     # GB inputs are decimal; the fixed post-consumption floor is 60 GiB, for EVERY task.
     $plannedBytes = [long][Math]::Ceiling(($PeakGB + $ConcurrentPeakGB) * 1e9)
     $remainingBytes = [long][Math]::Max((60 * 1GB), [Math]::Ceiling($ReserveGB * 1e9))
     foreach ($root in ($Roots | Select-Object -Unique)) {
         $free = [long](& $Provider $root)
+        $observation = [pscustomobject]@{root=$root;freeBytes=$free;projectedRemainingBytes=($free - $plannedBytes);requiredRemainingBytes=$remainingBytes;observedUtc=[DateTime]::UtcNow.ToString('o')}
+        if ($null -ne $Observations) { $null = $Observations.Add($observation) }
         if ($free -lt 100e9) { Write-Warning 'Less than 100 GB free; review the planned build and recording budget.' }
         if ($free -lt ($plannedBytes + $remainingBytes)) { throw 'Build held: declared build/concurrent peaks would leave less than 60 GiB or the requested reserve.' }
-        [pscustomobject]@{root=$root;freeBytes=$free;projectedRemainingBytes=($free - $plannedBytes);requiredRemainingBytes=$remainingBytes;observedUtc=[DateTime]::UtcNow.ToString('o')}
+        $observation
     }
 }
 
@@ -173,12 +175,14 @@ function Invoke-GuardedBuild {
             $locks += [IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         }
         $retained = @($prior.retained)
-        $manifest = [ordered]@{schemaVersion=1;taskId=$TaskId;reasonCode=$ReasonCode;repository=$repo;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=$null;status='running';retainedArtifacts=$retained;cleanupCandidates=@();cleanupExecuted=$false;budget=@{expectedPeakGB=$ExpectedPeakGB;concurrentPeakGB=$ConcurrentPeakGB;reserveGB=$ReserveGB;minimumRemainingGiB=60};spaceBeforeBuild=$space;spaceAfterBuild=@();retentionPolicy='owner-review-no-auto-delete'}
+        $manifest = [ordered]@{schemaVersion=1;taskId=$TaskId;reasonCode=$ReasonCode;repository=$repo;commit=$head[0];workingTreeDirty=$dirty;buildDirectory=$build;cacheDirectory=$cache;startedUtc=[DateTime]::UtcNow.ToString('o');finishedUtc=$null;status='running';retainedArtifacts=$retained;cleanupCandidates=@();cleanupExecuted=$false;budget=@{expectedPeakGB=$ExpectedPeakGB;concurrentPeakGB=$ConcurrentPeakGB;reserveGB=$ReserveGB;minimumRemainingGiB=60};spaceBeforeBuild=$space;spaceAfterBuild=@();spaceAfterPreservation=@();retentionPolicy='owner-review-no-auto-delete'}
         Write-GuardManifest $manifestPath $manifest
         if ($cache) { $env:GRADLE_USER_HOME = $cache }
         Set-Location -LiteralPath $repo
         & $BuildAction | Out-Host
-        $manifest.spaceAfterBuild = @(Assert-GuardSpace $roots $FreeBytesProvider 0 $ReserveGB $ConcurrentPeakGB)
+        $afterBuild = New-Object 'System.Collections.Generic.List[object]'
+        try { $null = @(Assert-GuardSpace $roots $FreeBytesProvider 0 $ReserveGB $ConcurrentPeakGB $afterBuild) }
+        finally { $manifest.spaceAfterBuild = @($afterBuild.ToArray()) }
         foreach ($a in ($artifactPaths | Select-Object -Unique)) {
             Assert-GuardLocalPath $a | Out-Null
             $info = Get-Item -LiteralPath $a -Force
@@ -209,6 +213,9 @@ function Invoke-GuardedBuild {
                 Write-GuardManifest $manifestPath $manifest
             }
         }
+        $afterPreservation = New-Object 'System.Collections.Generic.List[object]'
+        try { $null = @(Assert-GuardSpace $roots $FreeBytesProvider 0 $ReserveGB $ConcurrentPeakGB $afterPreservation) }
+        finally { $manifest.spaceAfterPreservation = @($afterPreservation.ToArray()) }
         $manifest.status = 'succeeded'
         $manifest.cleanupCandidates = @($candidatePaths | ForEach-Object { [pscustomobject]@{path=$_;category='regenerable-build-output';retentionRule='owner-review-no-age-based-deletion';ownerConfirmationRequired=$true;approvalRequired=$true;retainedArtifactsVerified=$true;boundaryReviewRequired=$true} })
         return [pscustomobject]@{status='succeeded';manifest=$manifestPath;cleanupExecuted=$false}
