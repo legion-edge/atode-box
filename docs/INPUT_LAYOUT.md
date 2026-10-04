@@ -1,41 +1,39 @@
 # 入力欄とキーボードの切替（Issue #37）
 
-確認日: 2026-10-04 JST。起点: main `b19c84f`。
+最終候補の確認日: 2026-10-04 JST。起点: main `b19c84f`。旧PR39の補間変更だけでは実機の違和感が解消せず、本人承認の固定高さ・初期配置変更へ更新する。
 
-## 現在の候補
+## 最終の挙動
 
-Androidでは、OSから届くbottom viewInsetsに追加の時間補間を行わない。既存AnimatedPaddingのdurationをDuration.zeroにして、そのlayoutで直ちに反映する。iOS通常時の120ms・easeOutと、disableAnimations有効時の即時反映は保持する。ScaffoldのresizeToAvoidBottomInsetはfalseなので、同じinsetを2回加算しない。
+入力欄の高さは `clamp(view高さ × 0.24, 144, 180) × max(1, textScaler.scale(1))`。IME insetから独立した画面寸法を使い、同じ画面寸法・文字倍率でのIME開閉では不変。Galaxy相当の通常文字は180 logical px、低い横画面は144pxを基準とする。回転・画面分割・文字倍率変更時には再計算する。閉じたときに一度に見える量が減る点は本人へ説明して承認された。
 
-同じwrapperのonEndを残し、余白変更後のlayoutでmounted・focus・selectionが有効な入力欄だけ現在caretをbringIntoViewで再表示する。zero-durationでもこの補正は維持する。通知拒否案内、180px以上（文字拡大時は増加）の入力欄、内部と画面全体のscroll、入力・選択・focus、登録・貼り付け動作を保つ。
+残り高さを埋めるExpanded／IntrinsicHeight／ConstrainedBoxを除去する。長文は入力欄内部、小画面や大文字で収まらない操作はページ全体をスクロールする。ページのdragでIMEを閉じる既存仕様は維持する。
 
-## 検証結果
+通知オフの短い状態表示は入力前に残す。通知許可ボタンと復旧説明は登録・貼り付けの後へ移し、文言とhandlerを維持する。フォーカス連動で案内を隠さない。Galaxy相当384×853.33・通常文字・エラーなしでは入力枠が通知拒否時top215／bottom395pxとなり、IME400pxまで見出し・枠位置とページoffsetが変わらない。
 
-Androidの開閉時は最初のlayoutで最終高さになり、40ms後・settle後に追加の高さ変化がないことを確認した。この新assertは旧120ms版で493pxと213pxが一致せず失敗し、直接反映候補で成功した。iOS通常時の中間高さと、disableAnimations時の即時反映も別variantで検証した。
+フォーカス獲得とIME余白更新のpost-frameで、枠がviewportに収まるときだけ枠全体を必要量scrollする。既に可視なら動かさない。枠がviewportより大きい場合は固定高さとcaret可視化を優先する。controller・focus・selectionを維持し、focus listenerはdispose時に解除する。
 
-320×640・文字倍率2・通知拒否案内で40行入力し、連続inset更新（80/160/280/160/0）ごとに最初のframeでSafeArea下端が640-insetに一致し、40ms後に余計な追従変化がないことを確認した。入力・selection・focus、回転後のscrollと末尾caret、登録ボタンへの到達と保存再読込を検証した。非ゼロのviewPadding/paddingで安全領域とcaretも確認する。変化途中の全frameでのcaret可視性を証明した結果ではない。
+Scaffoldのresizeはfalseで、bottom insetはAndroidで即反映する。iOS通常時の120ms補間とdisableAnimations時の即反映は保持する。追加のscroll時間アニメーションは設けない。
 
-flutter analyze指摘なし、全83テスト成功。独立read-onlyレビューで重大指摘なし。保存schema・repository・通知処理・依存・権限設定は変更していない。
+## 検証と本人受入
 
-## 本人結果と動画所見の範囲
+自動試験は通常Galaxyの連続IME変化でRect／offset不変、5条件の固定高さ、空欄の通知許可／拒否と再フォーカス、IME450／500／600のfallback、狭幅・大文字・横画面・回転、長文末尾、selection・focus保持、caret可視性、登録と貼り付けへの到達、保存再読込を確認する。iOS／動きを減らす設定の補間も別variantで確認する。
 
-旧候補 `2ead932`／versionCode 2では、本人が「枠の拡大、縮小の変化をあまり感じない」、さらに「IMEがせり上がる速度よりフォーム縮小が遅い」と報告し、主観改善は未受入。
+製品用の独立準備branchでは `flutter analyze` 指摘なし、`flutter test --no-pub` 全96テスト成功。v7統合候補との差は別PR38の4テストで、入力画面 `lib/main.dart` のファイルSHA256は本人受入済みv7と一致する。最終独立read-onlyレビューにブロッカー・取り込み漏れなし。
 
-親が30fps外部撮影動画を直接確認し、2回のopeningでIMEが下部controlsへ重なる間は枠が高く、その後短縮した枠境界が見えると報告した。子担当は動画を直接閲覧していない。重なりによって底辺が隠れるため正確なlag msや120ms補間が原因とは確定していない。closingは通知permission dialogで遮蔽され、純粋な閉じ試験とは扱わない。5〜6行入力・末尾視認・scrollも本人の明示結果待ち。
+PR38を含む統合詳細試験v7（実装 `6c4f526`）は静的解析と100テスト成功、profile arm64 APKをビルド済み。Galaxy A25 5Gで本人が通常サイズについて以下を確認した。
 
-新候補はアプリ側の追加遅延を取り除く対策であり、OSがinsetを一括更新する場合の段階移動、実IMEとの開始／終了同期、debug buildのframe落ちまで解消したと主張しない。Samsung IMEの体感は次の本人受入まで未確認。Draftを維持してmergeを保留する。
+- 空欄タップとIME開閉で見出し／画面全体が上へずれない。
+- 入力枠下辺がIMEに隠れない。
+- 長文を欄内で末尾までスクロールできる。
+- IME再開後に文字とカーソル位置が保持される。
+- IMEを閉じた後に「貼り付けて追加」が見える。
 
-## 今回の境界
+選択範囲保持、大文字・横画面・高いIMEは自動試験の結果で、実機本人受入とは区別する。IMEを開いたまま貼り付けボタンへ到達すること、本人による試験文保存成功は確認していない。「貼り付けて追加」は非空入力でも表示され、clipboard内容を直接保存する操作であり、今回押していない。
 
-修正実装段階ではnativebuildを待ち、code commit `65b2166`の[skip ci]で一時的に自動OSビルドを抑止した。後続の明示指示で下記統合候補を準備した。CI抑止は恒久条件にせず、この結果記録commitでは通常のPRチェックを再開する。最終HEADのCI結果はPRへ記録し、旧HEADの成功と混同しない。
+更新時に空欄を確認し、両アプリの保存データ・通知権限・予約ファイルは前後一致、元試験アプリ4件と10月4日21時JST予約・OS alarmを保持した。現在の未保存試験文は本人が保持中で、更新・終了・破棄・保存を行わない。実機の履歴と各候補の限界は [FIXED_INPUT_TRIAL.md](FIXED_INPUT_TRIAL.md) に記録する。
 
-PR38のフィルター位置ずれ解消は本人確認済みで別件。新候補へ合わせる際にも維持する。PR41背景処理、通知preview、SSD運用は含めない。元通知試験アプリの4件と10月4日21:00予約・既存詳細試験データを保持する。
+## PRの境界
 
-## 統合試験候補versionCode 3
+製品差分に試験専用package／label、診断buffer／VM extension、PR38のfilter変更、PR41の背景処理を含めない。PR38は独立したPRで保持し、最終統合候補ではその位置安定化と合わせて試験した。保存schema・repository・通知処理・依存・権限設定を変更しない。
 
-PR38を保持したcandidate `8d2abcf36e1da3bb0f102bd4bf1507dabe80b8c8`に直接反映修正を含め、analyze問題なし・全87テスト成功・統合read-onlyレビュー重大指摘なし。既存Gradle cacheでarm64 debug APKを1本ビルドし、同package・同署名の既存詳細試験アプリへversionCode 3として上書き更新した。新規アプリ追加・保存データ削除はしていない。
-
-APK SHA256: `B2D47282AAA2AB7604115C726AF147F99F3B298C9C345960A9B203758B939EF1`。更新前後の両アプリ保存JSONと通知permission flagsが一致。元試験アプリの予約内容も一致し、OS alarmは元版のみ、詳細試験は予約なし。更新前から詳細試験の通知は拒否、USER_SET/USER_FIXEDが付いていた。今回権限・アニメーション設定へ触れていない。
-
-これはnativebuild・更新・保全照合の結果であり、実IME同期や本人の触感改善成功ではない。新候補の本人開閉確認を待つ。
-
-公式資料（同日確認）: [AnimatedPadding](https://api.flutter.dev/flutter/widgets/AnimatedPadding-class.html)、[Scaffold resize](https://api.flutter.dev/flutter/material/Scaffold/resizeToAvoidBottomInset.html)、[disableAnimationsOf](https://api.flutter.dev/flutter/widgets/MediaQuery/disableAnimationsOf.html)、[GitHub workflow skip](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)。
+製品用branchを検証し、新HEADのCIはpush後に確認する。旧HEAD `0089a1c` のCI4ジョブ成功を新HEADの結果として扱わない。mergeは未許可。
