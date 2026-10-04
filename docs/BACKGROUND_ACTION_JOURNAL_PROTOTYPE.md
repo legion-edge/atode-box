@@ -4,7 +4,7 @@ Current A: analysis and all151 tests passed. Counts117/154 below describe earlie
 
 # 背景action journalのローカル試作
 
-後続の[Android native受付接続準備](SHARED_ACTION_STORAGE_CONTRACT.md)を追加した。以下はWindows FFI adapterの検証範囲であり、native側の未実証境界は接続準備文書を参照する。
+[Aの共有契約と未実証境界](SHARED_ACTION_STORAGE_CONTRACT.md)を参照する。以下はWindows FFI adapterの検証範囲であり、native接続と実機受入はこの抽出ブランチに含まない。
 
 Issue #40向けの実験用SQLite adapterにdurableな受付journalを追加した。productionのLocalRepository、native receiver、端末の通知には接続していない。匿名fixtureのWindows SQLite FFI試験であり、Android/iOSの背景実行や通知到達を証明する結果ではない。
 
@@ -25,6 +25,3 @@ Issue #40向けの実験用SQLite adapterにdurableな受付journalを追加し�
 native callbackはDart起動、OS通知cancel、callback acknowledgmentより前にjournalへ保存する必要がある。この試作はDartのFFI APIで受付しており、そのnative admission順序を実装・実証していない。実際のengine破棄、native OS coordinator、OS受付後ack前の中断、boot/receiver writerの統合、restore epoch、全production writerの移行も未完了。outboxの存在は通知配信の証拠ではない。
 
 [最小native spikeの計画](SHARED_ACTION_STORAGE_CONTRACT.md)に沿って、専用匿名データと通知namespaceで上記境界を先に実証する。現在はOS build、実機操作、remote pushを保留している。
-
-
-

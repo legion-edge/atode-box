@@ -61,5 +61,3 @@ Issue #40と[設計の必須条件](BACKGROUND_ACTIONS_DESIGN.md#独立設計レ
 5. 実JSON v0/v1保全移行とdowngrade分岐、全foreground writer移行、UI再読込、native DB factoryとheadless plugin登録。
 
 上記を解消する前にproduction保存を置換したり、完了／あとでのforeground設定を外したりしない。Issue完了・実機受入・merge可能とは報告しない。PR #41更新時は「pure契約＋SQLite prototypeの匿名検証」までとし、Draft・Issue参照のみを維持する（Closes #40を付けない）。公開範囲とCI/OSビルド実行の扱いは親へ報告してから決める。
-
-
