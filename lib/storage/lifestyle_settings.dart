@@ -1,3 +1,5 @@
+enum OverdueRecoveryPolicy { nextRegularSlot, notifyOnRecovery }
+
 class LifestyleSettings {
   const LifestyleSettings({
     this.commuteStartMinute = 18 * 60,
@@ -5,6 +7,7 @@ class LifestyleSettings {
     this.weekendsAreHolidays = true,
     this.japaneseHolidays = true,
     this.initialSetupComplete = false,
+    this.overdueRecoveryPolicy = OverdueRecoveryPolicy.nextRegularSlot,
   }) : assert(commuteStartMinute >= 0 && commuteStartMinute < 1440),
        assert(afterHomeMinute >= 0 && afterHomeMinute < 1440);
 
@@ -13,6 +16,7 @@ class LifestyleSettings {
   final bool weekendsAreHolidays;
   final bool japaneseHolidays;
   final bool initialSetupComplete;
+  final OverdueRecoveryPolicy overdueRecoveryPolicy;
 
   LifestyleSettings copyWith({
     int? commuteStartMinute,
@@ -20,12 +24,14 @@ class LifestyleSettings {
     bool? weekendsAreHolidays,
     bool? japaneseHolidays,
     bool? initialSetupComplete,
+    OverdueRecoveryPolicy? overdueRecoveryPolicy,
   }) => LifestyleSettings(
     commuteStartMinute: commuteStartMinute ?? this.commuteStartMinute,
     afterHomeMinute: afterHomeMinute ?? this.afterHomeMinute,
     weekendsAreHolidays: weekendsAreHolidays ?? this.weekendsAreHolidays,
     japaneseHolidays: japaneseHolidays ?? this.japaneseHolidays,
     initialSetupComplete: initialSetupComplete ?? this.initialSetupComplete,
+    overdueRecoveryPolicy: overdueRecoveryPolicy ?? this.overdueRecoveryPolicy,
   );
 
   bool hasSameScheduleAs(LifestyleSettings other) =>
@@ -40,6 +46,10 @@ class LifestyleSettings {
     'weekends_are_holidays': weekendsAreHolidays,
     'japanese_holidays': japaneseHolidays,
     'initial_setup_complete': initialSetupComplete,
+    'overdue_recovery_policy': switch (overdueRecoveryPolicy) {
+      OverdueRecoveryPolicy.nextRegularSlot => 'next_regular_slot',
+      OverdueRecoveryPolicy.notifyOnRecovery => 'notify_on_recovery',
+    },
   };
 
   factory LifestyleSettings.fromJson(Map<String, dynamic> json) =>
@@ -49,5 +59,10 @@ class LifestyleSettings {
         weekendsAreHolidays: json['weekends_are_holidays'] as bool? ?? true,
         japaneseHolidays: json['japanese_holidays'] as bool? ?? true,
         initialSetupComplete: json['initial_setup_complete'] as bool? ?? false,
+        overdueRecoveryPolicy: switch (json['overdue_recovery_policy']) {
+          null || 'next_regular_slot' => OverdueRecoveryPolicy.nextRegularSlot,
+          'notify_on_recovery' => OverdueRecoveryPolicy.notifyOnRecovery,
+          _ => throw const FormatException('Unknown overdue recovery policy'),
+        },
       );
 }
