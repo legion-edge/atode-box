@@ -131,6 +131,19 @@ class _NotificationListScreenState extends State<NotificationListScreen>
                 children: [
                   for (final filter in NotificationListFilter.values)
                     ChoiceChip(
+                      // Keep the check slot present so selection cannot reflow Wrap.
+                      showCheckmark: false,
+                      avatar: ExcludeSemantics(
+                        child: Icon(
+                          Icons.check,
+                          size: 18,
+                          color: _filter == filter
+                              ? Theme.of(context)
+                                    .colorScheme
+                                    .onSecondaryContainer
+                              : Colors.transparent,
+                        ),
+                      ),
                       label: Text(filter.label),
                       selected: _filter == filter,
                       onSelected: (_) => setState(() => _filter = filter),

@@ -43,6 +43,57 @@ void main() {
     expect(find.text('完了済みの項目はありません'), findsOneWidget);
   });
 
+  for (final scenario in [
+    (size: const Size(360, 800), scale: 1.0),
+    (size: const Size(320, 640), scale: 2.0),
+    (size: const Size(240, 800), scale: 2.0),
+    (size: const Size(640, 320), scale: 2.0),
+  ]) {
+    testWidgets('選択を変えても全フィルターの位置・幅が一定 ($scenario)', (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        tester.view.physicalSize = scenario.size;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = scenario.scale;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(app(LocalRepository(MemoryStore())));
+        await tester.pumpAndSettle();
+        final labels = ['今日', '明日以降', '休日', '1週間後以降', '完了済み'];
+        Finder chip(String label) => find.widgetWithText(ChoiceChip, label);
+        final initial = {
+          for (final label in labels) label: tester.getRect(chip(label)),
+        };
+        for (final selected in labels) {
+          await tester.tap(chip(selected));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          for (final label in labels) {
+            expect(
+              tester.getRect(chip(label)),
+              initial[label],
+              reason: '$selected / $label',
+            );
+            expect(
+              tester.widget<ChoiceChip>(chip(label)).selected,
+              label == selected,
+            );
+            expect(chip(label).hitTestable(), findsOneWidget);
+            final meaning = tester.getSemantics(chip(label)).getSemanticsData();
+            expect(meaning.label, label);
+            expect(
+              meaning.flagsCollection.isSelected.toBoolOrNull(),
+              label == selected,
+            );
+          }
+        }
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
+
   testWidgets('長文と狭い画面で表示が崩れず、内容へ進める', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
